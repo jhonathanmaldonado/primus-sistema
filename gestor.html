@@ -6,6 +6,7 @@
 <title>Gestor — Primus</title>
 <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@400;600;800;900&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/primus.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
 <style>
   body { overflow-x: hidden; }
@@ -523,37 +524,9 @@
       <div class="content-header-title" id="view-title">Dashboard</div>
     </div>
 
-    <!-- DASHBOARD (placeholder por enquanto) -->
+    <!-- DASHBOARD -->
     <section class="view" id="view-dashboard">
-      <div class="kpi-grid">
-        <div class="kpi-card vinho">
-          <div class="kpi-label">Vendas Hoje</div>
-          <div class="kpi-value">—</div>
-          <div class="kpi-sub">Aguardando upload do PDV</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-label">Estoque Atual</div>
-          <div class="kpi-value">—</div>
-          <div class="kpi-sub">Última contagem</div>
-        </div>
-        <div class="kpi-card verde">
-          <div class="kpi-label">Itens p/ comprar</div>
-          <div class="kpi-value">—</div>
-          <div class="kpi-sub">Estoque baixo</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-label">Contagens do mês</div>
-          <div class="kpi-value">—</div>
-          <div class="kpi-sub">Total registrado</div>
-        </div>
-      </div>
-
-      <div class="placeholder-view">
-        <div class="placeholder-icon">📊</div>
-        <h3>Dashboard em construção</h3>
-        <p>Na próxima etapa, esta área vai mostrar gráficos de vendas, rankings de vendedores, mix de produtos e análise hora a hora. Você vai poder fazer upload dos TXTs do PDV para alimentar esses dados.</p>
-        <span class="placeholder-badge">⏳ Parte 2</span>
-      </div>
+      <div id="dashboard-container"></div>
     </section>
 
     <!-- CONTAGENS -->
@@ -602,12 +575,7 @@
 
     <!-- VENDAS -->
     <section class="view" id="view-vendas">
-      <div class="placeholder-view">
-        <div class="placeholder-icon">💰</div>
-        <h3>Vendas & Vendedores</h3>
-        <p>Upload do TXT do PDV, histórico dia a dia, ranking de vendedores, mix de produtos, análise hora a hora. Gráficos com Chart.js mantendo a identidade Primus.</p>
-        <span class="placeholder-badge">⏳ Parte 2</span>
-      </div>
+      <div id="vendas-container"></div>
     </section>
 
     <!-- USUÁRIOS -->

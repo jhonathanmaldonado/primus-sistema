@@ -60,8 +60,11 @@ primus/
     ├── auth.js             # Login, PIN, sessão, permissões
     ├── db.js               # Leitura/escrita no Firestore
     ├── produtos.js         # Catálogo central de produtos
+    ├── pdv-parser.js       # Parser do TXT do PDV
     ├── contagem.js         # Lógica da tela de contagem
-    └── gestor.js           # Lógica do painel do gestor
+    ├── vendas.js           # Upload e gestão de vendas
+    ├── dashboard.js        # KPIs e gráficos (Chart.js)
+    └── gestor.js           # Navegação do painel do gestor
 ```
 
 ## Coleções do Firestore
@@ -74,8 +77,9 @@ Todas as coleções usam o prefixo `primus_` para não conflitar com outros sist
 - **`primus_compras`** — Listas de compras (Parte 3)
 - **`primus_produtos`** — Catálogo dinâmico de produtos (Parte 3)
 
-## O que está pronto (Parte 1)
+## O que está pronto (Parte 1 + Parte 2)
 
+### Parte 1 — Base do sistema
 - ✅ Login com PIN (4 dígitos) por pessoa
 - ✅ 3 perfis com permissões diferentes
 - ✅ Seed automático dos usuários padrão no primeiro acesso
@@ -85,14 +89,25 @@ Todas as coleções usam o prefixo `primus_` para não conflitar com outros sist
 - ✅ Modal com detalhes de cada contagem
 - ✅ Listagem básica de usuários
 
+### Parte 2 — Vendas & Dashboard
+- ✅ Parser automático do TXT do PDV (entende o formato do seu relatório)
+- ✅ Upload com drag-and-drop + prévia antes de salvar
+- ✅ Detecção automática de encoding (UTF-8 ou latin-1)
+- ✅ Aviso de sobrescrita se o dia já foi importado
+- ✅ Histórico de dias importados com acesso aos detalhes
+- ✅ Dashboard com 5 KPIs (faturamento, ticket médio, média diária, itens, melhor vendedor)
+- ✅ Filtros de período (7 dias, 30 dias, mês atual, tudo, personalizado)
+- ✅ Gráfico de faturamento diário (linha, com médias)
+- ✅ Gráfico de mix por grupo (pizza/donut)
+- ✅ Gráfico de vendas por hora (barras, com destaque do pico)
+- ✅ Top 10 produtos (barras horizontais)
+- ✅ Ranking de vendedores (com medalhas 🥇🥈🥉, barras de progresso, ticket médio)
+- ✅ OPERADORES em seção separada (não atrapalha o ranking dos vendedores nomeados)
+- ✅ Chart.js com paleta de cores Primus
+
 ## Próximas partes
 
-### Parte 2 — Vendas & Dashboard
-- Upload de TXT do PDV com parser automático
-- Dashboard com KPIs, gráficos (Chart.js) e histórico dia a dia
-- Ranking de vendedores, mix de produtos, análise hora a hora
-
-### Parte 3 — Auditoria & Compras
+### Parte 3 — Auditoria, Compras & Usuários
 - Módulo de auditoria (evolução do Primus Pro)
 - Lista de compras inteligente (sugestão automática + ajuste manual)
 - Gestão completa de usuários (criar, editar PIN, desativar)
