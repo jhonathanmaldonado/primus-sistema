@@ -4,6 +4,8 @@
 import { exigirPerfil, logout, listarUsuarios } from './auth.js';
 import { listarContagens } from './db.js';
 import { BEBIDAS, SORVETES, slugify } from './produtos.js';
+import { inicializarDashboard, recarregarDashboard } from './dashboard.js';
+import { inicializarVendas } from './vendas.js';
 
 const sessao = exigirPerfil(['gestor']);
 if (!sessao) throw new Error('sem sessão');
@@ -48,6 +50,31 @@ function mostrarView(id) {
   // Carregadores específicos
   if (id === 'contagens') carregarContagens();
   if (id === 'usuarios')  carregarUsuarios();
+  if (id === 'dashboard') carregarDashboard();
+  if (id === 'vendas')    carregarVendas();
+}
+
+// ===== CARREGADORES DE MÓDULO =====
+// (carregam apenas na primeira visita pra economizar leituras do Firestore)
+let dashboardCarregado = false;
+let vendasCarregado = false;
+
+async function carregarDashboard() {
+  if (window._dashboardPrecisaRecarregar) {
+    // Foi uploaded um novo TXT — recarrega dados
+    window._dashboardPrecisaRecarregar = false;
+    await recarregarDashboard();
+    return;
+  }
+  if (dashboardCarregado) return;
+  dashboardCarregado = true;
+  await inicializarDashboard();
+}
+
+async function carregarVendas() {
+  if (vendasCarregado) return;
+  vendasCarregado = true;
+  await inicializarVendas();
 }
 
 Object.keys(views).forEach(id => {

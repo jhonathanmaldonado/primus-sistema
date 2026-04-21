@@ -75,8 +75,13 @@ export async function excluirContagem(id) {
 
 // ===== VENDAS (parseadas do TXT do PDV) =====
 
+/**
+ * Salva vendas de um dia. Sobrescreve se já existir.
+ * @param {string} dia - 'YYYY-MM-DD'
+ * @param {object} dados - { totais, vendedores, grupos, subgrupos, produtos, horas, operadores }
+ */
 export async function salvarVendas(dia, dados) {
-  // dia = 'YYYY-MM-DD', dados = { totais, vendedores, grupos, subgrupos, produtos, horas }
+  // dia = 'YYYY-MM-DD', dados = { totais, vendedores, grupos, subgrupos, produtos, horas, operadores }
   await setDoc(doc(db, COL_VENDAS, dia), {
     ...dados,
     atualizadoEm: serverTimestamp()
@@ -88,6 +93,10 @@ export async function buscarVendasDia(dia) {
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 }
 
+/**
+ * Lista vendas ordenadas por data (mais recente primeiro).
+ * Pode filtrar por período.
+ */
 export async function listarVendas({ dataInicio, dataFim, limite = 60 } = {}) {
   const filtros = [];
   if (dataInicio) filtros.push(where('__name__', '>=', dataInicio));
@@ -98,6 +107,16 @@ export async function listarVendas({ dataInicio, dataFim, limite = 60 } = {}) {
   const snap = await getDocs(q);
   const arr = [];
   snap.forEach(d => arr.push({ id: d.id, ...d.data() }));
+  return arr;
+}
+
+/**
+ * Lista apenas os IDs (datas) de vendas já importadas - útil pra detectar duplicatas.
+ */
+export async function listarDatasVendas() {
+  const snap = await getDocs(query(collection(db, COL_VENDAS), orderBy('__name__', 'desc'), limit(365)));
+  const arr = [];
+  snap.forEach(d => arr.push(d.id));
   return arr;
 }
 
