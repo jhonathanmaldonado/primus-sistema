@@ -1,0 +1,230 @@
+/* ========================================================================
+   PRIMUS — CSS compartilhado
+   Identidade: vinho #7C0047 + amarelo #FAB900
+   Fontes: Raleway (display) + DM Sans (body) + DM Mono (labels)
+   ======================================================================== */
+
+:root {
+  --amarelo: #FAB900;
+  --vinho: #7C0047;
+  --vinho-dark: #5d0035;
+  --branco: #FFFFFF;
+  --preto: #1a1714;
+  --cinza-bg: #f5f3f0;
+  --cinza-card: #ffffff;
+  --cinza-borda: #e8e3dc;
+  --cinza-texto: #6b6761;
+  --verde: #1e6641;
+  --verde-bg: #e8f5ed;
+  --vermelho: #b5451b;
+  --vermelho-bg: #fdf0eb;
+  --amarelo-status: #b5850a;
+  --amarelo-bg: #fdf8ec;
+  --azul: #1a5276;
+  --azul-bg: #eaf2f8;
+  --ks-bg: #fdeef7;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body { height: 100%; }
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--cinza-bg);
+  color: var(--preto);
+  min-height: 100vh;
+  line-height: 1.5;
+}
+
+/* ===== HEADER PADRÃO ===== */
+.header {
+  background: var(--vinho);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 4px 20px rgba(124,0,71,0.3);
+}
+.header-tarja { background: var(--amarelo); height: 4px; }
+.header-inner {
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.header-logo { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.logo-box {
+  width: 42px; height: 42px;
+  background: var(--amarelo);
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Raleway', sans-serif;
+  font-weight: 900; font-size: 16px; color: var(--vinho);
+  flex-shrink: 0;
+}
+.logo-text h1 {
+  font-family: 'Raleway', sans-serif;
+  font-weight: 900;
+  font-size: 18px;
+  color: white;
+  letter-spacing: 1.5px;
+  line-height: 1.1;
+}
+.logo-text p {
+  font-size: 10px;
+  color: rgba(255,255,255,0.55);
+  font-family: 'DM Mono', monospace;
+  letter-spacing: 0.5px;
+  margin-top: 2px;
+}
+
+/* ===== USUÁRIO LOGADO (canto superior direito) ===== */
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px 6px 6px;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 30px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.user-chip:hover { background: rgba(255,255,255,0.18); }
+.user-avatar {
+  width: 30px; height: 30px;
+  background: var(--amarelo);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--vinho);
+  font-family: 'Raleway', sans-serif;
+  font-weight: 800;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.user-info { color: white; font-size: 12px; line-height: 1.2; min-width: 0; }
+.user-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+.user-perfil { font-size: 9px; opacity: 0.6; font-family: 'DM Mono', monospace; text-transform: uppercase; letter-spacing: 1px; }
+
+/* Menu dropdown do usuário */
+.user-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: white;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  min-width: 180px;
+  padding: 6px;
+  display: none;
+  z-index: 200;
+}
+.user-menu.open { display: block; }
+.user-menu button {
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  color: var(--preto);
+  transition: background 0.15s;
+}
+.user-menu button:hover { background: var(--cinza-bg); }
+.user-menu button.danger { color: var(--vermelho); }
+
+.user-chip-wrap { position: relative; }
+
+/* ===== BOTÕES BASE ===== */
+.btn {
+  padding: 10px 18px;
+  border: none;
+  border-radius: 9px;
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+}
+.btn-primary { background: var(--amarelo); color: var(--vinho); }
+.btn-primary:hover { background: #e8a900; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(250,185,0,0.4); }
+.btn-vinho { background: var(--vinho); color: white; }
+.btn-vinho:hover { background: var(--vinho-dark); }
+.btn-ghost { background: transparent; color: var(--preto); border: 1.5px solid var(--cinza-borda); }
+.btn-ghost:hover { border-color: var(--vinho); color: var(--vinho); }
+.btn-danger { background: var(--vermelho-bg); color: var(--vermelho); }
+.btn-danger:hover { background: var(--vermelho); color: white; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
+
+/* ===== TOAST ===== */
+.toast {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-120%);
+  background: var(--preto);
+  color: white;
+  padding: 12px 20px;
+  border-radius: 10px;
+  font-size: 14px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  z-index: 9999;
+  transition: transform 0.3s;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+.toast.ok { background: var(--verde); }
+.toast.err { background: var(--vermelho); }
+
+/* ===== LOADING ===== */
+.spinner {
+  display: inline-block;
+  width: 16px; height: 16px;
+  border: 2px solid rgba(124,0,71,0.2);
+  border-top-color: var(--vinho);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.loading-full {
+  position: fixed;
+  inset: 0;
+  background: rgba(245,243,240,0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9998;
+}
+.loading-full .spinner { width: 40px; height: 40px; border-width: 4px; }
+
+/* ===== UTILITÁRIOS ===== */
+.hidden { display: none !important; }
+.text-center { text-align: center; }
+.text-muted { color: var(--cinza-texto); }
+.mono { font-family: 'DM Mono', monospace; }
+.display-font { font-family: 'Raleway', sans-serif; font-weight: 800; }
+
+/* Barra de ações fixa no rodapé (mobile) */
+.bottom-bar {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  background: white;
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.1);
+  padding: 12px 16px;
+  display: flex;
+  gap: 10px;
+  z-index: 90;
+}
+.bottom-bar .btn { flex: 1; padding: 14px; font-size: 14px; }
