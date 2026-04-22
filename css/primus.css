@@ -635,3 +635,191 @@ body {
   margin-top: 10px;
   gap: 10px;
 }
+
+/* ========================================================================
+   GESTÃO DE USUÁRIOS
+   ======================================================================== */
+
+.usuarios-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 14px;
+  border-bottom: 2px solid var(--cinza-borda);
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.usuarios-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 12px;
+}
+
+.user-admin-card {
+  background: var(--cinza-bg);
+  border: 1.5px solid transparent;
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: all 0.2s;
+}
+.user-admin-card:hover {
+  background: white;
+  border-color: var(--cinza-borda);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+}
+.user-admin-card.inativo {
+  opacity: 0.55;
+}
+.user-admin-card.inativo .user-admin-avatar {
+  background: var(--cinza-texto);
+}
+
+.user-admin-avatar {
+  width: 46px; height: 46px;
+  border-radius: 50%;
+  background: var(--vinho);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Raleway', sans-serif;
+  font-weight: 800;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.user-admin-info { flex: 1; min-width: 0; }
+.user-admin-nome {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.2;
+}
+.user-admin-eu {
+  font-size: 9px;
+  background: var(--amarelo);
+  color: var(--vinho);
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-family: 'DM Mono', monospace;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.user-admin-meta { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.badge-inativo {
+  background: var(--vermelho-bg);
+  color: var(--vermelho);
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  font-family: 'DM Mono', monospace;
+  text-transform: uppercase;
+}
+
+.user-admin-acoes {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.icon-btn {
+  background: transparent;
+  border: 1.5px solid transparent;
+  border-radius: 8px;
+  width: 34px; height: 34px;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  padding: 0;
+}
+.icon-btn:hover {
+  background: white;
+  border-color: var(--cinza-borda);
+}
+.icon-btn.danger:hover {
+  background: var(--vermelho-bg);
+  border-color: var(--vermelho);
+}
+.icon-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* ========================================================================
+   FORMULÁRIOS (modais de criar/editar/trocar PIN)
+   ======================================================================== */
+
+.form-group {
+  margin-bottom: 14px;
+}
+.form-group label {
+  display: block;
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  color: var(--cinza-texto);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+.form-group input,
+.form-group select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1.5px solid var(--cinza-borda);
+  border-radius: 8px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  background: white;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.form-group input:focus,
+.form-group select:focus {
+  border-color: var(--amarelo);
+  box-shadow: 0 0 0 3px rgba(250,185,0,0.15);
+}
+.form-group input[type="tel"] {
+  font-family: 'DM Mono', monospace;
+  font-size: 20px;
+  text-align: center;
+  letter-spacing: 8px;
+}
+.form-hint {
+  display: block;
+  font-size: 11px;
+  color: var(--cinza-texto);
+  margin-top: 4px;
+  font-style: italic;
+}
+.form-erro {
+  background: var(--vermelho-bg);
+  color: var(--vermelho);
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.form-acoes {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 18px;
+}
