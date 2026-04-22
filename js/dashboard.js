@@ -160,8 +160,8 @@ export async function inicializarDashboard() {
             </select>
           </div>
           <div class="filtro-group">
-            <label>Filtrar grupo</label>
-            <select id="expl-grupo">
+            <label>Filtrar subgrupo</label>
+            <select id="expl-subgrupo">
               <option value="">Todos</option>
             </select>
           </div>
@@ -867,20 +867,20 @@ function renderExplorador(vendas) {
 
   // Popula dropdowns de filtro
   const vendedores = new Set();
-  const grupos = new Set();
+  const subgrupos = new Set();
   const produtos = new Set();
   vendas.forEach(v => {
     (v.vendedores || []).forEach(vd => vendedores.add(vd.nome));
-    (v.grupos || []).forEach(g => grupos.add(g.nome));
+    (v.subgrupos || []).forEach(s => subgrupos.add(s.nome));
     (v.produtos || []).forEach(p => produtos.add(p.nome));
   });
 
   popularDropdown('expl-vendedor', vendedores, 'Todos');
-  popularDropdown('expl-grupo', grupos, 'Todos');
+  popularDropdown('expl-subgrupo', subgrupos, 'Todos');
   popularDropdown('expl-produto', produtos, 'Todos');
 
   // Listeners
-  ['expl-dimensao', 'expl-vendedor', 'expl-grupo', 'expl-produto'].forEach(id => {
+  ['expl-dimensao', 'expl-vendedor', 'expl-subgrupo', 'expl-produto'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.onchange = atualizarExplorador;
   });
@@ -889,7 +889,7 @@ function renderExplorador(vendas) {
   if (btnLimpar) {
     btnLimpar.onclick = () => {
       document.getElementById('expl-vendedor').value = '';
-      document.getElementById('expl-grupo').value = '';
+      document.getElementById('expl-subgrupo').value = '';
       document.getElementById('expl-produto').value = '';
       atualizarExplorador();
     };
@@ -908,10 +908,10 @@ function popularDropdown(id, items, todosLabel) {
 
 function atualizarExplorador() {
   const vendas = vendasExploradorAtual;
-  const dimensao = document.getElementById('expl-dimensao').value;
-  const fVend    = document.getElementById('expl-vendedor').value;
-  const fGrupo   = document.getElementById('expl-grupo').value;
-  const fProduto = document.getElementById('expl-produto').value;
+  const dimensao   = document.getElementById('expl-dimensao').value;
+  const fVend      = document.getElementById('expl-vendedor').value;
+  const fSubgrupo  = document.getElementById('expl-subgrupo').value;
+  const fProduto   = document.getElementById('expl-produto').value;
 
   const resultado = document.getElementById('explorador-resultado');
 
@@ -920,18 +920,15 @@ function atualizarExplorador() {
 
   vendas.forEach(v => {
     const dataDia = v.id;
-
-    // Se tem filtro de vendedor, pega só a parte desse vendedor do dia
-    // Senão, usa os totais do dia
     let fonte;
 
-    if (dimensao === 'vendedor' || fVend) {
+    if (dimensao === 'vendedor') {
       fonte = (v.vendedores || []).filter(vd => !fVend || vd.nome === fVend);
-    } else if (dimensao === 'grupo' || fGrupo) {
-      fonte = (v.grupos || []).filter(g => !fGrupo || g.nome === fGrupo);
+    } else if (dimensao === 'grupo') {
+      fonte = v.grupos || [];
     } else if (dimensao === 'subgrupo') {
-      fonte = v.subgrupos || [];
-    } else if (dimensao === 'produto' || fProduto) {
+      fonte = (v.subgrupos || []).filter(s => !fSubgrupo || s.nome === fSubgrupo);
+    } else if (dimensao === 'produto') {
       fonte = (v.produtos || []).filter(p => !fProduto || p.nome === fProduto);
     } else if (dimensao === 'hora') {
       fonte = (v.horas || []).map(h => ({ ...h, nome: h.faixa }));
@@ -941,14 +938,22 @@ function atualizarExplorador() {
       fonte = [{ nome: dataDia, qtd: v.totais?.qtd || 0, total: v.totais?.total || 0 }];
     }
 
+    // Se a dimensão não é "vendedor" mas tem filtro de vendedor, precisa aplicar a proporção
+    // (como o TXT não relaciona vendedor × produto diretamente, só dá pra fazer assim)
+    if (fVend && dimensao !== 'vendedor') {
+      const vendedorDia = (v.vendedores || []).find(vd => vd.nome === fVend);
+      if (!vendedorDia) return;
+      const proporcao = vendedorDia.total / (v.totais?.total || 1);
+      fonte = fonte.map(x => ({
+        ...x,
+        qtd: (x.qtd || 0) * proporcao,
+        total: (x.total || 0) * proporcao
+      }));
+    }
+
     fonte.forEach(item => {
       let chave;
-      if (dimensao === 'vendedor')       chave = item.nome;
-      else if (dimensao === 'grupo')     chave = item.nome;
-      else if (dimensao === 'subgrupo')  chave = item.nome;
-      else if (dimensao === 'produto')   chave = item.nome;
-      else if (dimensao === 'hora')      chave = item.nome;
-      else if (dimensao === 'dia')       chave = fmtData(dataDia);
+      if (dimensao === 'dia') chave = fmtData(dataDia);
       else chave = item.nome;
 
       if (!buckets[chave]) buckets[chave] = { qtd: 0, total: 0, dias: new Set() };
@@ -961,7 +966,6 @@ function atualizarExplorador() {
   const ordenado = Object.entries(buckets)
     .map(([k, v]) => ({ chave: k, qtd: v.qtd, total: v.total, dias: v.dias.size }))
     .sort((a, b) => {
-      // Para hora e dia, ordena por chave (tempo)
       if (dimensao === 'hora' || dimensao === 'dia') {
         return a.chave.localeCompare(b.chave);
       }
@@ -973,38 +977,60 @@ function atualizarExplorador() {
     return;
   }
 
-  // Maior total pra barra de progresso
   const maior = Math.max(...ordenado.map(r => r.total));
   const totalGeral = ordenado.reduce((s, r) => s + r.total, 0);
   const qtdTotal = ordenado.reduce((s, r) => s + r.qtd, 0);
+  const avisoProporcao = (fVend && dimensao !== 'vendedor')
+    ? `<div class="expl-aviso">⚠️ Valores estimados por proporção do vendedor sobre o total do dia</div>`
+    : '';
 
-  // Renderiza como tabela
   resultado.innerHTML = `
     <div class="expl-resumo">
-      <div><span class="expl-resumo-label">Registros:</span> <strong>${ordenado.length}</strong></div>
-      <div><span class="expl-resumo-label">Total:</span> <strong>${fmtMoeda(totalGeral)}</strong></div>
-      <div><span class="expl-resumo-label">Unidades:</span> <strong>${fmtInt(qtdTotal)}</strong></div>
-    </div>
-    <div class="expl-tabela">
-      <div class="expl-linha expl-cabecalho">
-        <div class="expl-chave">${dimensaoLabel(dimensao)}</div>
-        <div class="expl-unidades">Unidades</div>
-        <div class="expl-valor">Faturamento</div>
+      <div class="expl-resumo-item">
+        <div class="expl-resumo-label">Registros</div>
+        <div class="expl-resumo-val">${ordenado.length}</div>
       </div>
-      ${ordenado.slice(0, 30).map(r => {
-        const pct = maior ? (r.total / maior) * 100 : 0;
-        return `
-          <div class="expl-linha">
-            <div class="expl-chave">${r.chave}</div>
-            <div class="expl-unidades">${fmtInt(r.qtd)}</div>
-            <div class="expl-valor">
-              ${fmtMoeda(r.total)}
-              <div class="expl-barra"><div class="expl-barra-fill" style="width:${pct}%"></div></div>
-            </div>
-          </div>
-        `;
-      }).join('')}
+      <div class="expl-resumo-item">
+        <div class="expl-resumo-label">Faturamento</div>
+        <div class="expl-resumo-val vinho">${fmtMoeda(totalGeral)}</div>
+      </div>
+      <div class="expl-resumo-item">
+        <div class="expl-resumo-label">Unidades</div>
+        <div class="expl-resumo-val">${fmtInt(qtdTotal)}</div>
+      </div>
     </div>
+    ${avisoProporcao}
+    <table class="expl-tabela">
+      <thead>
+        <tr>
+          <th class="expl-th-pos">#</th>
+          <th class="expl-th-chave">${dimensaoLabel(dimensao)}</th>
+          <th class="expl-th-num">Unidades</th>
+          <th class="expl-th-num">Faturamento</th>
+          <th class="expl-th-barra">Participação</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${ordenado.slice(0, 30).map((r, i) => {
+          const pct = maior ? (r.total / maior) * 100 : 0;
+          const pctTotal = totalGeral ? (r.total / totalGeral) * 100 : 0;
+          return `
+            <tr>
+              <td class="expl-td-pos">${i + 1}</td>
+              <td class="expl-td-chave" title="${r.chave}">${r.chave}</td>
+              <td class="expl-td-num">${fmtInt(r.qtd)}</td>
+              <td class="expl-td-num expl-td-vinho">${fmtMoeda(r.total)}</td>
+              <td class="expl-td-barra">
+                <div class="expl-barra-wrap">
+                  <div class="expl-barra-fill" style="width:${pct}%"></div>
+                </div>
+                <span class="expl-barra-pct">${pctTotal.toFixed(1)}%</span>
+              </td>
+            </tr>
+          `;
+        }).join('')}
+      </tbody>
+    </table>
     ${ordenado.length > 30 ? `<p class="text-muted text-center" style="padding:10px;font-size:11px">Mostrando top 30 de ${ordenado.length} registros. Use filtros pra refinar.</p>` : ''}
   `;
 }
