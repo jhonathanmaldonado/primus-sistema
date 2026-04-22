@@ -138,7 +138,7 @@ export async function inicializarDashboard() {
       <div class="card" id="card-explorador">
         <div class="grafico-head">
           <h3>🔎 Explorador de dados</h3>
-          <span class="grafico-sub">Filtre por data, vendedor, grupo ou produto</span>
+          <span class="grafico-sub" id="sub-explorador">Use o período selecionado no topo do dashboard</span>
         </div>
 
         <div class="explorador-filtros">
@@ -171,7 +171,10 @@ export async function inicializarDashboard() {
               <option value="">Todos</option>
             </select>
           </div>
-          <button class="btn btn-ghost btn-sm" id="btn-expl-limpar">Limpar</button>
+          <div class="explorador-botoes">
+            <button class="btn btn-primary btn-sm" id="btn-expl-aplicar">🔎 Aplicar</button>
+            <button class="btn btn-ghost btn-sm" id="btn-expl-limpar">Limpar</button>
+          </div>
         </div>
 
         <div id="explorador-resultado"></div>
@@ -865,6 +868,24 @@ let vendasExploradorAtual = [];
 function renderExplorador(vendas) {
   vendasExploradorAtual = vendas;
 
+  // Atualiza subtítulo com info do período ativo
+  const subEl = document.getElementById('sub-explorador');
+  if (subEl) {
+    if (vendas.length > 0) {
+      const datas = vendas.map(v => v.id).sort();
+      const primeira = datas[0];
+      const ultima   = datas[datas.length - 1];
+      const diasOp = vendas.length;
+      if (primeira === ultima) {
+        subEl.textContent = `${fmtData(primeira)} · ${diasOp} dia`;
+      } else {
+        subEl.textContent = `${fmtData(primeira)} a ${fmtData(ultima)} · ${diasOp} dias`;
+      }
+    } else {
+      subEl.textContent = 'sem dados no período selecionado';
+    }
+  }
+
   // Popula dropdowns de filtro
   const vendedores = new Set();
   const subgrupos = new Set();
@@ -879,10 +900,18 @@ function renderExplorador(vendas) {
   popularDropdown('expl-subgrupo', subgrupos, 'Todos');
   popularDropdown('expl-produto', produtos, 'Todos');
 
-  // Listeners
+  // Botão Aplicar — único que dispara o cálculo
+  const btnAplicar = document.getElementById('btn-expl-aplicar');
+  if (btnAplicar) btnAplicar.onclick = atualizarExplorador;
+
+  // Enter em qualquer select também aplica
   ['expl-dimensao', 'expl-vendedor', 'expl-subgrupo', 'expl-produto'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.onchange = atualizarExplorador;
+    if (el) {
+      el.addEventListener('keydown', e => {
+        if (e.key === 'Enter') atualizarExplorador();
+      });
+    }
   });
 
   const btnLimpar = document.getElementById('btn-expl-limpar');
@@ -895,6 +924,7 @@ function renderExplorador(vendas) {
     };
   }
 
+  // Renderiza estado inicial (sem filtros, por vendedor)
   atualizarExplorador();
 }
 
@@ -918,47 +948,80 @@ function atualizarExplorador() {
   // Agrupa conforme a dimensão escolhida, aplicando os filtros
   const buckets = {}; // { chave: { qtd, total, dias: Set } }
 
+  // Detecta se alguma estimativa por proporção foi usada (pra mostrar aviso)
+  let usouProporcao = false;
+
   vendas.forEach(v => {
     const dataDia = v.id;
-    let fonte;
+    const totalDia = v.totais?.total || 0;
+    const qtdDia   = v.totais?.qtd || 0;
+    if (!totalDia) return;
 
+    // Passo 1: descobrir o "peso" desse dia de acordo com os filtros
+    // (qual fração do dia conta pra esse filtro)
+    let pesoValor = 1; // multiplicador sobre valor (total)
+    let pesoQtd   = 1; // multiplicador sobre quantidade (qtd)
+
+    // Filtro por vendedor: aplica proporção do vendedor no total do dia
+    if (fVend) {
+      const vd = (v.vendedores || []).find(x => x.nome === fVend);
+      if (!vd) return; // vendedor não trabalhou nesse dia
+      pesoValor *= vd.total / totalDia;
+      pesoQtd   *= (qtdDia ? vd.qtd / qtdDia : 0);
+      if (dimensao !== 'vendedor') usouProporcao = true;
+    }
+
+    // Filtro por subgrupo: aplica proporção do subgrupo no total do dia
+    if (fSubgrupo) {
+      const sg = (v.subgrupos || []).find(x => x.nome === fSubgrupo);
+      if (!sg) return; // subgrupo não vendeu nesse dia
+      pesoValor *= sg.total / totalDia;
+      pesoQtd   *= (qtdDia ? sg.qtd / qtdDia : 0);
+      if (dimensao !== 'subgrupo') usouProporcao = true;
+    }
+
+    // Filtro por produto: aplica proporção do produto no total do dia
+    if (fProduto) {
+      const prd = (v.produtos || []).find(x => x.nome === fProduto);
+      if (!prd) return; // produto não vendeu nesse dia
+      pesoValor *= prd.total / totalDia;
+      pesoQtd   *= (qtdDia ? prd.qtd / qtdDia : 0);
+      if (dimensao !== 'produto') usouProporcao = true;
+    }
+
+    // Passo 2: escolher a fonte (array de itens) conforme a dimensão
+    let fonte;
     if (dimensao === 'vendedor') {
-      fonte = (v.vendedores || []).filter(vd => !fVend || vd.nome === fVend);
+      fonte = v.vendedores || [];
     } else if (dimensao === 'grupo') {
       fonte = v.grupos || [];
     } else if (dimensao === 'subgrupo') {
-      fonte = (v.subgrupos || []).filter(s => !fSubgrupo || s.nome === fSubgrupo);
+      fonte = v.subgrupos || [];
     } else if (dimensao === 'produto') {
-      fonte = (v.produtos || []).filter(p => !fProduto || p.nome === fProduto);
+      fonte = v.produtos || [];
     } else if (dimensao === 'hora') {
       fonte = (v.horas || []).map(h => ({ ...h, nome: h.faixa }));
     } else if (dimensao === 'dia') {
-      fonte = [{ nome: dataDia, qtd: v.totais?.qtd || 0, total: v.totais?.total || 0 }];
+      fonte = [{ nome: dataDia, qtd: qtdDia, total: totalDia }];
     } else {
-      fonte = [{ nome: dataDia, qtd: v.totais?.qtd || 0, total: v.totais?.total || 0 }];
+      fonte = [];
     }
 
-    // Se a dimensão não é "vendedor" mas tem filtro de vendedor, precisa aplicar a proporção
-    // (como o TXT não relaciona vendedor × produto diretamente, só dá pra fazer assim)
-    if (fVend && dimensao !== 'vendedor') {
-      const vendedorDia = (v.vendedores || []).find(vd => vd.nome === fVend);
-      if (!vendedorDia) return;
-      const proporcao = vendedorDia.total / (v.totais?.total || 1);
-      fonte = fonte.map(x => ({
-        ...x,
-        qtd: (x.qtd || 0) * proporcao,
-        total: (x.total || 0) * proporcao
-      }));
-    }
-
+    // Passo 3: aplicar os pesos nos itens da fonte
     fonte.forEach(item => {
       let chave;
       if (dimensao === 'dia') chave = fmtData(dataDia);
       else chave = item.nome;
 
+      const itemValor = (item.total || 0) * pesoValor;
+      const itemQtd   = (item.qtd || 0) * pesoQtd;
+
+      // Se o item tem valor zero depois dos filtros, pula
+      if (itemValor < 0.01 && itemQtd < 0.01) return;
+
       if (!buckets[chave]) buckets[chave] = { qtd: 0, total: 0, dias: new Set() };
-      buckets[chave].qtd   += item.qtd || 0;
-      buckets[chave].total += item.total || 0;
+      buckets[chave].qtd   += itemQtd;
+      buckets[chave].total += itemValor;
       buckets[chave].dias.add(dataDia);
     });
   });
@@ -973,15 +1036,15 @@ function atualizarExplorador() {
     });
 
   if (!ordenado.length) {
-    resultado.innerHTML = '<p class="text-muted text-center" style="padding:20px">Sem dados para os filtros selecionados.</p>';
+    resultado.innerHTML = '<p class="text-muted text-center" style="padding:30px">Sem dados para os filtros selecionados.</p>';
     return;
   }
 
   const maior = Math.max(...ordenado.map(r => r.total));
   const totalGeral = ordenado.reduce((s, r) => s + r.total, 0);
   const qtdTotal = ordenado.reduce((s, r) => s + r.qtd, 0);
-  const avisoProporcao = (fVend && dimensao !== 'vendedor')
-    ? `<div class="expl-aviso">⚠️ Valores estimados por proporção do vendedor sobre o total do dia</div>`
+  const avisoProporcao = usouProporcao
+    ? `<div class="expl-aviso">⚠️ Valores estimados por proporção — o TXT do PDV não cruza diretamente ${descreverFiltros(fVend, fSubgrupo, fProduto, dimensao)}. O cálculo usa a participação de cada filtro sobre o total do dia.</div>`
     : '';
 
   resultado.innerHTML = `
@@ -1033,6 +1096,16 @@ function atualizarExplorador() {
     </table>
     ${ordenado.length > 30 ? `<p class="text-muted text-center" style="padding:10px;font-size:11px">Mostrando top 30 de ${ordenado.length} registros. Use filtros pra refinar.</p>` : ''}
   `;
+}
+
+function descreverFiltros(fVend, fSubgrupo, fProduto, dimensao) {
+  const ativos = [];
+  if (fVend && dimensao !== 'vendedor')      ativos.push('vendedor');
+  if (fSubgrupo && dimensao !== 'subgrupo')  ativos.push('subgrupo');
+  if (fProduto && dimensao !== 'produto')    ativos.push('produto');
+  if (ativos.length === 0) return 'esses filtros';
+  if (ativos.length === 1) return ativos[0] + ' × ' + dimensao;
+  return ativos.join(' × ') + ' × ' + dimensao;
 }
 
 function dimensaoLabel(d) {
