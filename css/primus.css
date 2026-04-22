@@ -1050,3 +1050,314 @@ body {
 .contagem-acoes .btn-ver {
   flex: 1;
 }
+
+/* ========================================================================
+   PAINEL COMPOSIÇÃO DAS VENDAS (drill-down grupo → subgrupo)
+   ======================================================================== */
+
+#composicao-wrap {
+  padding: 8px 0;
+}
+
+.composicao-item {
+  padding: 14px;
+  border-radius: 10px;
+  margin-bottom: 10px;
+  background: var(--cinza-bg);
+  transition: all 0.15s;
+  position: relative;
+  border-left: 4px solid var(--item-cor, var(--vinho));
+}
+.composicao-clicavel {
+  cursor: pointer;
+}
+.composicao-clicavel:hover {
+  background: white;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+  transform: translateY(-1px);
+}
+
+.composicao-item-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.composicao-item-nome {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--preto);
+}
+.composicao-item-nome strong {
+  font-family: 'Raleway', sans-serif;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+.composicao-item-icone {
+  font-size: 18px;
+}
+
+.composicao-item-vals {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: 'DM Mono', monospace;
+}
+.composicao-item-valor {
+  font-weight: 700;
+  color: var(--vinho);
+  font-size: 14px;
+}
+.composicao-item-pct {
+  background: white;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid var(--cinza-borda);
+  color: var(--cinza-texto);
+  min-width: 48px;
+  text-align: center;
+}
+
+.composicao-barra {
+  height: 8px;
+  background: var(--cinza-borda);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+.composicao-barra-sub {
+  height: 5px;
+}
+.composicao-barra-fill {
+  height: 100%;
+  background: var(--vinho);
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+
+.composicao-item-meta {
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  color: var(--cinza-texto);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+/* Subgrupos (visão drill-down) */
+.composicao-sub-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1.5px solid var(--cinza-borda);
+  font-size: 13px;
+}
+.composicao-sub-header strong {
+  color: var(--vinho);
+  font-family: 'Raleway', sans-serif;
+  font-weight: 800;
+}
+.btn-voltar {
+  background: transparent;
+  border: 1.5px solid var(--cinza-borda);
+  color: var(--cinza-texto);
+  padding: 5px 12px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-voltar:hover {
+  background: var(--vinho);
+  color: white;
+  border-color: var(--vinho);
+}
+
+.composicao-item-sub {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--cinza-bg);
+  margin-bottom: 6px;
+}
+.composicao-item-sub .composicao-item-head {
+  margin-bottom: 5px;
+}
+.composicao-item-sub span:first-child {
+  font-weight: 500;
+  font-size: 13px;
+}
+
+/* ========================================================================
+   UPLOAD VENDEDOR × PRODUTO (VxP)
+   ======================================================================== */
+
+.badge-opcional {
+  background: var(--cinza-borda);
+  color: var(--cinza-texto);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-family: 'DM Mono', monospace;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 700;
+  margin-left: 8px;
+}
+
+.info-vxp {
+  background: var(--amarelo-bg);
+  border-left: 3px solid var(--amarelo);
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-size: 12px;
+  color: var(--preto);
+  line-height: 1.5;
+}
+
+.upload-tab-content-vxp { display: none; padding-top: 14px; }
+.upload-tab-content-vxp.active { display: block; }
+.upload-tab-vxp.active { background: var(--amarelo); color: var(--vinho); }
+
+.preview-vxp-wrap {
+  margin-top: 16px;
+  padding: 16px;
+  background: var(--cinza-bg);
+  border-radius: 10px;
+  border: 1px solid var(--cinza-borda);
+}
+.preview-vxp-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.preview-vxp-head h4 {
+  font-family: 'Raleway', sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  margin: 0;
+  color: var(--preto);
+}
+.preview-vxp-status {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.preview-vxp-status.ok   { background: var(--verde-bg); color: var(--verde-status); }
+.preview-vxp-status.warn { background: var(--amarelo-bg); color: var(--amarelo-status); }
+
+.preview-vxp-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 14px;
+  background: white;
+  border-radius: 8px;
+}
+.preview-vxp-val {
+  font-family: 'Raleway', sans-serif;
+  font-weight: 800;
+  font-size: 18px;
+  color: var(--preto);
+}
+.preview-vxp-val.vinho { color: var(--vinho); }
+
+.preview-vxp-top {
+  background: white;
+  padding: 12px 14px;
+  border-radius: 8px;
+  margin-bottom: 14px;
+  font-size: 12px;
+}
+.preview-vxp-top strong {
+  display: block;
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--cinza-texto);
+  margin-bottom: 8px;
+}
+.preview-vxp-top ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.preview-vxp-top li {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--cinza-borda);
+  font-size: 12px;
+}
+.preview-vxp-top li:last-child { border: none; }
+.preview-vxp-top li span:last-child {
+  font-family: 'DM Mono', monospace;
+  color: var(--vinho);
+  font-weight: 600;
+}
+
+.preview-vxp-dia {
+  margin-bottom: 14px;
+}
+.preview-vxp-dia label {
+  display: block;
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  color: var(--cinza-texto);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.preview-vxp-dia select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1.5px solid var(--cinza-borda);
+  border-radius: 8px;
+  font-size: 14px;
+  background: white;
+}
+
+.preview-vxp-acoes {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+/* Badge "valores reais" */
+.badge-real {
+  background: var(--verde-bg);
+  color: var(--verde-status);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-family: 'DM Mono', monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 700;
+}
+
+.expl-aviso-ok {
+  background: var(--verde-bg);
+  border-left-color: var(--verde-status);
+  color: var(--verde-status);
+}
