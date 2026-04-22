@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Primus — Entrar</title>
+<link rel="icon" type="image/png" href="img/logo.png">
 <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@400;600;800;900&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/primus.css">
 
@@ -41,18 +42,14 @@
     text-align: center;
     margin-bottom: 28px;
   }
-  .login-brand .logo-box {
-    width: 60px; height: 60px;
-    background: var(--vinho);
-    border-radius: 14px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-family: 'Raleway', sans-serif;
-    font-weight: 900;
-    font-size: 22px;
-    color: var(--amarelo);
-    margin-bottom: 14px;
+  .login-brand .logo-img {
+    width: 96px;
+    height: 96px;
+    margin-bottom: 16px;
+    border-radius: 20px;
+    box-shadow: 0 8px 24px rgba(124,0,71,0.15);
+    display: inline-block;
+    object-fit: contain;
   }
   .login-brand h1 {
     font-family: 'Raleway', sans-serif;
@@ -276,7 +273,7 @@
 
 <div class="login-card">
   <div class="login-brand">
-    <div class="logo-box">PP</div>
+    <img src="img/logo.png" alt="Primus Peixaria" class="logo-img">
     <h1>PRIMUS</h1>
     <p>Sistema de Gestão</p>
   </div>
