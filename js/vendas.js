@@ -2,12 +2,14 @@
 // Upload de TXT do PDV, listagem de dias importados, visualização de detalhes
 
 import { parsePdvTxt, resumirParse } from './pdv-parser.js';
-import { salvarVendas, listarDatasVendas, buscarVendasDia, listarVendas } from './db.js';
+import { parseVendedorXProduto, validarParse } from './pdv-vxp-parser.js';
+import { salvarVendas, listarDatasVendas, buscarVendasDia, listarVendas, salvarDetalhadoVxP } from './db.js';
 import { recarregarDashboard } from './dashboard.js';
 
 // Cache
 let datasImportadas = [];
 let arquivoPendente = null; // { nome, parsed, resumo }
+let arquivoVxPPendente = null; // { nome, texto, vendedores, validacao }
 
 // ===== FORMATADORES =====
 const fmtMoeda = v => 'R$ ' + (v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -56,6 +58,48 @@ export async function inicializarVendas() {
       <div id="preview-area" style="display:none"></div>
     </div>
 
+    <!-- Upload adicional: Vendedor × Produto -->
+    <div class="card" style="margin-top:16px">
+      <div class="grafico-head">
+        <h3>👥 Detalhamento Vendedor × Produto <span class="badge-opcional">opcional</span></h3>
+        <span class="grafico-sub">Suba o relatório "Itens vendidos por vendedor" pra ter valores REAIS em vez de estimativas</span>
+      </div>
+
+      <div class="info-vxp">
+        💡 Com esse relatório, o sistema consegue mostrar exatamente o que cada vendedor vendeu de cada produto.
+        Útil para saber quem vende mais entradas, sobremesas, bebidas específicas, etc.
+      </div>
+
+      <div class="upload-tabs">
+        <button class="upload-tab active" data-tab-vxp="arquivo">📁 Arquivo</button>
+        <button class="upload-tab" data-tab-vxp="texto">📋 Colar texto</button>
+      </div>
+
+      <div class="upload-tab-content-vxp active" data-tab-vxp="arquivo">
+        <div class="upload-zone" id="upload-zone-vxp">
+          <input type="file" id="upload-file-vxp" accept=".txt">
+          <div class="upload-icon">👥</div>
+          <div class="upload-title">Clique ou arraste o relatório "Itens vendidos por vendedor"</div>
+          <div class="upload-hint">Formato esperado: vendedor + seus produtos tabulados</div>
+        </div>
+      </div>
+
+      <div class="upload-tab-content-vxp" data-tab-vxp="texto">
+        <textarea
+          id="upload-texto-vxp"
+          class="upload-textarea"
+          placeholder="Cole aqui o conteúdo do relatório Vendedor × Produto (Ctrl+V)..."
+          rows="6"
+        ></textarea>
+        <div class="upload-acoes-texto">
+          <span class="upload-hint" id="upload-texto-vxp-hint">0 linhas</span>
+          <button class="btn btn-primary" id="btn-processar-vxp">📊 Processar</button>
+        </div>
+      </div>
+
+      <div id="preview-vxp" style="display:none"></div>
+    </div>
+
     <div class="card">
       <div class="grafico-head">
         <h3>📁 Dias já importados</h3>
@@ -70,6 +114,9 @@ export async function inicializarVendas() {
   setupTabs();
   setupUpload();
   setupColarTexto();
+  setupTabsVxP();
+  setupUploadVxP();
+  setupColarTextoVxP();
   await carregarListaImportados();
 }
 
@@ -297,6 +344,231 @@ async function confirmarUpload() {
 }
 
 // ===== LISTA DE IMPORTADOS =====
+// ===== UPLOAD VENDEDOR × PRODUTO (detalhado, opcional) =====
+
+function setupTabsVxP() {
+  document.querySelectorAll('[data-tab-vxp]').forEach(tab => {
+    if (tab.tagName !== 'BUTTON') return;
+    tab.onclick = () => {
+      const alvo = tab.dataset.tabVxp;
+      document.querySelectorAll('[data-tab-vxp]').forEach(el => {
+        if (el.dataset.tabVxp === alvo) el.classList.add('active');
+        else el.classList.remove('active');
+      });
+    };
+  });
+}
+
+function setupUploadVxP() {
+  const zona = document.getElementById('upload-zone-vxp');
+  const input = document.getElementById('upload-file-vxp');
+  if (!zona || !input) return;
+
+  zona.onclick = () => input.click();
+  input.onchange = e => {
+    const file = e.target.files?.[0];
+    if (file) processarArquivoVxP(file);
+  };
+
+  // Drag & drop
+  zona.ondragover = e => { e.preventDefault(); zona.classList.add('drag'); };
+  zona.ondragleave = () => zona.classList.remove('drag');
+  zona.ondrop = e => {
+    e.preventDefault();
+    zona.classList.remove('drag');
+    const file = e.dataTransfer.files?.[0];
+    if (file) processarArquivoVxP(file);
+  };
+}
+
+function setupColarTextoVxP() {
+  const ta = document.getElementById('upload-texto-vxp');
+  const hint = document.getElementById('upload-texto-vxp-hint');
+  const btn = document.getElementById('btn-processar-vxp');
+  if (!ta || !btn) return;
+
+  ta.addEventListener('input', () => {
+    const linhas = ta.value.split('\n').filter(l => l.trim()).length;
+    if (hint) hint.textContent = `${linhas} linhas`;
+  });
+  btn.onclick = () => {
+    const texto = ta.value.trim();
+    if (!texto) { mostrarToast('Cole o conteúdo do relatório primeiro.', 'err'); return; }
+    processarTextoVxP(texto);
+  };
+}
+
+async function processarArquivoVxP(file) {
+  try {
+    // Tenta UTF-8 primeiro, depois latin-1 se falhar
+    let texto;
+    try {
+      texto = await file.text();
+      // Heurística: se tem muito caractere "Ã" ou "�", pode ser encoding errado
+      if ((texto.match(/Ã[\u0080-\u00BF]/g) || []).length > 5) {
+        const buf = await file.arrayBuffer();
+        texto = new TextDecoder('latin1').decode(buf);
+      }
+    } catch (e) {
+      const buf = await file.arrayBuffer();
+      texto = new TextDecoder('latin1').decode(buf);
+    }
+    processarTextoVxP(texto, file.name);
+  } catch (e) {
+    mostrarToast('Erro ao ler arquivo: ' + e.message, 'err');
+  }
+}
+
+function processarTextoVxP(texto, nomeVirtual = 'texto-colado.txt') {
+  try {
+    const vendedores = parseVendedorXProduto(texto);
+    if (!vendedores.length) {
+      mostrarToast('Nenhum vendedor encontrado. Verifique o formato do arquivo.', 'err');
+      return;
+    }
+
+    const validacao = validarParse(vendedores);
+    arquivoVxPPendente = { nome: nomeVirtual, texto, vendedores, validacao };
+
+    renderPreviewVxP();
+  } catch (e) {
+    console.error(e);
+    mostrarToast('Erro ao processar: ' + e.message, 'err');
+  }
+}
+
+function renderPreviewVxP() {
+  const { vendedores, validacao, nome } = arquivoVxPPendente;
+  const div = document.getElementById('preview-vxp');
+  if (!div) return;
+
+  const topVend = [...vendedores].sort((a,b) => b.total - a.total).slice(0, 5);
+  const totalQtd = vendedores.reduce((s,v) => s + v.totalQtd, 0);
+
+  // Seletor de dia: lista os dias já importados + opção de escolher outro
+  const opcoesDia = datasImportadas.map(d =>
+    `<option value="${d}">${fmtData(d)}</option>`
+  ).join('');
+
+  div.innerHTML = `
+    <div class="preview-vxp-wrap">
+      <div class="preview-vxp-head">
+        <h4>📄 ${nome}</h4>
+        <span class="preview-vxp-status ${validacao.consistente ? 'ok' : 'warn'}">
+          ${validacao.consistente ? '✓ Soma consistente' : '⚠️ Soma com divergência'}
+        </span>
+      </div>
+
+      <div class="preview-vxp-stats">
+        <div>
+          <div class="expl-resumo-label">Vendedores</div>
+          <div class="preview-vxp-val">${validacao.vendedores}</div>
+        </div>
+        <div>
+          <div class="expl-resumo-label">Total</div>
+          <div class="preview-vxp-val vinho">${fmtMoeda(validacao.totalVendedores)}</div>
+        </div>
+        <div>
+          <div class="expl-resumo-label">Itens vendidos</div>
+          <div class="preview-vxp-val">${fmtInt(totalQtd)}</div>
+        </div>
+      </div>
+
+      <div class="preview-vxp-top">
+        <strong>Top 5 vendedores no arquivo:</strong>
+        <ul>
+          ${topVend.map(v => `
+            <li>
+              <span>${v.nome}</span>
+              <span>${fmtInt(v.totalQtd)} itens · ${fmtMoeda(v.total)} · ${v.produtos.length} produtos</span>
+            </li>
+          `).join('')}
+        </ul>
+      </div>
+
+      <div class="preview-vxp-dia">
+        <label>A qual dia esse detalhamento se refere?</label>
+        <select id="sel-dia-vxp">
+          <option value="">-- Escolha o dia --</option>
+          ${opcoesDia}
+        </select>
+        <small class="form-hint">Só é possível anexar a dias que já têm o relatório geral importado.</small>
+      </div>
+
+      <div class="preview-vxp-acoes">
+        <button class="btn btn-ghost" id="btn-cancelar-vxp">Cancelar</button>
+        <button class="btn btn-primary" id="btn-confirmar-vxp">Salvar detalhamento</button>
+      </div>
+    </div>
+  `;
+  div.style.display = 'block';
+
+  document.getElementById('btn-cancelar-vxp').onclick = cancelarUploadVxP;
+  document.getElementById('btn-confirmar-vxp').onclick = confirmarUploadVxP;
+
+  // Scroll até preview
+  div.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function cancelarUploadVxP() {
+  arquivoVxPPendente = null;
+  document.getElementById('preview-vxp').style.display = 'none';
+  const input = document.getElementById('upload-file-vxp');
+  if (input) input.value = '';
+  const ta = document.getElementById('upload-texto-vxp');
+  if (ta) ta.value = '';
+}
+
+async function confirmarUploadVxP() {
+  const dia = document.getElementById('sel-dia-vxp').value;
+  if (!dia) {
+    mostrarToast('Selecione a qual dia o detalhamento se refere.', 'err');
+    return;
+  }
+
+  const btn = document.getElementById('btn-confirmar-vxp');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Salvando...';
+
+  try {
+    // Valida consistência contra o geral
+    const geral = await buscarVendasDia(dia);
+    if (geral && geral.totais?.total) {
+      const diff = Math.abs(geral.totais.total - arquivoVxPPendente.validacao.totalVendedores);
+      const pctDiff = (diff / geral.totais.total) * 100;
+
+      if (pctDiff > 20) {
+        const ok = confirm(
+          `⚠️ Aviso de divergência:\n\n` +
+          `Relatório geral: ${fmtMoeda(geral.totais.total)}\n` +
+          `Detalhado: ${fmtMoeda(arquivoVxPPendente.validacao.totalVendedores)}\n` +
+          `Diferença: ${pctDiff.toFixed(1)}%\n\n` +
+          `Essa diferença costuma significar que falta OPERADORES no detalhado ` +
+          `(vendas sem vendedor atribuído). Deseja prosseguir mesmo assim?`
+        );
+        if (!ok) {
+          btn.disabled = false;
+          btn.innerHTML = 'Salvar detalhamento';
+          return;
+        }
+      }
+    }
+
+    await salvarDetalhadoVxP(dia, arquivoVxPPendente.vendedores);
+
+    mostrarToast(`✓ Detalhamento do dia ${fmtData(dia)} salvo!`, 'ok');
+    cancelarUploadVxP();
+    await carregarListaImportados();
+    window._dashboardPrecisaRecarregar = true;
+  } catch (e) {
+    console.error(e);
+    mostrarToast('Erro ao salvar: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Salvar detalhamento';
+  }
+}
+
 async function carregarListaImportados() {
   const lista = document.getElementById('lista-importados');
   try {

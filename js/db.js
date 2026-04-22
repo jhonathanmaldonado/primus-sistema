@@ -102,6 +102,26 @@ export async function buscarVendasDia(dia) {
 }
 
 /**
+ * Salva o detalhamento Vendedor × Produto num dia que já tem vendas importadas.
+ * Mescla com o documento existente (preserva todos os outros campos).
+ * @param {string} dia - 'YYYY-MM-DD'
+ * @param {array} detalhado - array de { nome, totalQtd, total, produtos }
+ */
+export async function salvarDetalhadoVxP(dia, detalhado) {
+  const existente = await buscarVendasDia(dia);
+  if (!existente) {
+    throw new Error(`Não há vendas importadas pro dia ${dia}. Suba primeiro o relatório geral.`);
+  }
+  // Remove o campo "id" que vem da leitura antes de gravar
+  const { id, ...dados } = existente;
+  await setDoc(doc(db, COL_VENDAS, dia), {
+    ...dados,
+    vendedoresDetalhado: detalhado,
+    detalhadoAtualizadoEm: serverTimestamp()
+  });
+}
+
+/**
  * Lista vendas ordenadas por data (mais recente primeiro).
  * Pode filtrar por período.
  * NOTA: busca todos os documentos e filtra/ordena em JS para evitar

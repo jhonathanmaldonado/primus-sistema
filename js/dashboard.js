@@ -70,11 +70,18 @@ export async function inicializarDashboard() {
 
         <div class="card grafico-card">
           <div class="grafico-head">
-            <h3>🥧 Mix por subgrupo</h3>
-            <span class="grafico-sub" id="sub-grupos"></span>
+            <h3>📊 Composição das vendas</h3>
+            <span class="grafico-sub" id="sub-composicao">clique num grupo pra ver os subgrupos</span>
           </div>
-          <div class="grafico-wrap" style="max-height:320px">
-            <canvas id="chart-grupos"></canvas>
+          <div id="composicao-wrap">
+            <div id="composicao-grupos"></div>
+            <div id="composicao-subgrupos-wrap" style="display:none">
+              <div class="composicao-sub-header">
+                <button class="btn-voltar" id="btn-voltar-grupos">← Voltar</button>
+                <span id="composicao-sub-titulo"></span>
+              </div>
+              <div id="composicao-subgrupos"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -280,7 +287,7 @@ function renderizarDashboard(vendas) {
 
   renderKPIs(vendas);
   renderGraficoDiario(vendas);
-  renderGraficoGrupos(vendas);
+  renderComposicao(vendas);
   renderGraficoHoras(vendas);
   renderGraficoProdutos(vendas);
   renderGraficoPratos(vendas);
@@ -388,96 +395,191 @@ function renderGraficoDiario(vendas) {
   document.getElementById('sub-diario').textContent = `média: ${fmtMoeda(media)}`;
 }
 
-// ===== GRÁFICO: MIX POR SUBGRUPO (top 8 + Outros) =====
-function renderGraficoGrupos(vendas) {
-  chartsAtivos.grupos?.destroy?.();
-  const soma = {};
+// ===== PAINEL: COMPOSIÇÃO DAS VENDAS (grupos → subgrupos) =====
+// Substitui a pizza por um painel navegável:
+// 1) Tela principal: 3 grupos (REFEICOES / BEBIDAS / DIVERSOS)
+// 2) Ao clicar, mostra os subgrupos daquele grupo
+// Muito mais legível que pizza com 16 fatias.
+//
+// Nota técnica: o TXT não associa subgrupo → grupo diretamente.
+// Uso mapeamento baseado em nomes conhecidos (construído a partir dos dados reais
+// observados nos arquivos da Primus).
+function renderComposicao(vendas) {
+  // Somar totais por grupo e por subgrupo
+  const somaGrupos = {};
+  const somaSubgrupos = {};
+  const totalGeral = vendas.reduce((s,v) => s + (v.totais?.total || 0), 0);
+
   vendas.forEach(v => {
+    (v.grupos || []).forEach(g => {
+      if (!somaGrupos[g.nome]) somaGrupos[g.nome] = { qtd: 0, total: 0 };
+      somaGrupos[g.nome].qtd   += g.qtd || 0;
+      somaGrupos[g.nome].total += g.total || 0;
+    });
     (v.subgrupos || []).forEach(s => {
-      soma[s.nome] = (soma[s.nome] || 0) + (s.total || 0);
+      if (!somaSubgrupos[s.nome]) somaSubgrupos[s.nome] = { qtd: 0, total: 0 };
+      somaSubgrupos[s.nome].qtd   += s.qtd || 0;
+      somaSubgrupos[s.nome].total += s.total || 0;
     });
   });
-  // Fallback se não tiver subgrupos (dados antigos): usa grupos
-  if (Object.keys(soma).length === 0) {
-    vendas.forEach(v => {
-      (v.grupos || []).forEach(g => {
-        soma[g.nome] = (soma[g.nome] || 0) + (g.total || 0);
-      });
-    });
-  }
 
-  const entries = Object.entries(soma).sort((a,b) => b[1] - a[1]);
-  // Top 8 + "Outros" agregando o resto
-  let top = entries.slice(0, 8);
-  const resto = entries.slice(8);
-  if (resto.length > 0) {
-    const somaResto = resto.reduce((s, e) => s + e[1], 0);
-    top.push([`Outros (${resto.length})`, somaResto]);
-  }
-  const labels = top.map(e => e[0]);
-  const valores = top.map(e => e[1]);
+  // Renderizar grupos (visão principal)
+  const grupos = Object.entries(somaGrupos).sort((a,b) => b[1].total - a[1].total);
+  const maior = grupos[0]?.[1]?.total || 1;
 
-  // Paleta estendida pra 9 fatias
-  const paletaExpandida = [
-    '#7C0047', '#FAB900', '#1e6641', '#1a5276', '#b5451b',
-    '#a13376', '#4a9d71', '#fcd04d', '#6b6761'
-  ];
+  const iconesGrupo = {
+    'REFEICOES': '🍽️',
+    'BEBIDAS': '🍺',
+    'DIVERSOS': '🎲'
+  };
+  const coresGrupo = {
+    'REFEICOES': 'var(--vinho)',
+    'BEBIDAS': 'var(--amarelo)',
+    'DIVERSOS': 'var(--verde-status)'
+  };
 
-  const ctx = document.getElementById('chart-grupos');
-  if (!ctx) return;
+  const htmlGrupos = grupos.map(([nome, v]) => {
+    const pct = totalGeral ? (v.total / totalGeral) * 100 : 0;
+    const barraLarg = (v.total / maior) * 100;
+    const cor = coresGrupo[nome] || 'var(--vinho)';
+    const icone = iconesGrupo[nome] || '📦';
 
-  chartsAtivos.grupos = new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      labels,
-      datasets: [{
-        data: valores,
-        backgroundColor: paletaExpandida.slice(0, labels.length),
-        borderWidth: 2,
-        borderColor: '#fff'
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          position: 'bottom',
-          labels: {
-            boxWidth: 10,
-            padding: 8,
-            font: { size: 10 },
-            generateLabels: function(chart) {
-              const data = chart.data;
-              if (!data.labels.length) return [];
-              const total = data.datasets[0].data.reduce((s,v) => s+v, 0);
-              return data.labels.map((label, i) => {
-                const v = data.datasets[0].data[i];
-                const pct = ((v / total) * 100).toFixed(1);
-                const nomeCurto = label.length > 18 ? label.slice(0, 16) + '…' : label;
-                return {
-                  text: `${nomeCurto} (${pct}%)`,
-                  fillStyle: data.datasets[0].backgroundColor[i],
-                  index: i
-                };
-              });
-            }
-          }
-        },
-        tooltip: {
-          callbacks: {
-            label: ctx => {
-              const total = valores.reduce((s,v) => s+v, 0);
-              const pct = ((ctx.parsed / total) * 100).toFixed(1);
-              return `${ctx.label}: ${fmtMoeda(ctx.parsed)} (${pct}%)`;
-            }
-          }
-        }
-      }
-    }
+    return `
+      <div class="composicao-item composicao-clicavel" data-grupo="${nome}" style="--item-cor:${cor}">
+        <div class="composicao-item-head">
+          <div class="composicao-item-nome">
+            <span class="composicao-item-icone">${icone}</span>
+            <strong>${nome}</strong>
+          </div>
+          <div class="composicao-item-vals">
+            <span class="composicao-item-valor">${fmtMoeda(v.total)}</span>
+            <span class="composicao-item-pct">${pct.toFixed(1)}%</span>
+          </div>
+        </div>
+        <div class="composicao-barra">
+          <div class="composicao-barra-fill" style="width:${barraLarg}%; background:${cor}"></div>
+        </div>
+        <div class="composicao-item-meta">
+          ${fmtInt(v.qtd)} unidades vendidas · clique pra ver subgrupos →
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  document.getElementById('composicao-grupos').innerHTML = htmlGrupos || '<p class="text-muted" style="padding:20px">Sem dados</p>';
+
+  // Ao clicar em um grupo, mostra os subgrupos
+  document.querySelectorAll('.composicao-clicavel').forEach(el => {
+    el.onclick = () => {
+      const grupo = el.dataset.grupo;
+      mostrarSubgruposDe(grupo, somaSubgrupos, somaGrupos[grupo]?.total || 0, vendas);
+    };
   });
 
-  document.getElementById('sub-grupos').textContent = `${entries.length} subgrupos`;
+  // Botão voltar
+  const btnVoltar = document.getElementById('btn-voltar-grupos');
+  if (btnVoltar) {
+    btnVoltar.onclick = () => {
+      document.getElementById('composicao-grupos').style.display = 'block';
+      document.getElementById('composicao-subgrupos-wrap').style.display = 'none';
+      document.getElementById('sub-composicao').textContent = 'clique num grupo pra ver os subgrupos';
+    };
+  }
+
+  // Indicador no subtítulo
+  document.getElementById('sub-composicao').textContent = `${grupos.length} grupos principais · ${fmtMoeda(totalGeral)}`;
+}
+
+function mostrarSubgruposDe(grupo, somaSubgrupos, totalGrupo, vendas) {
+  // Mapeia cada subgrupo ao seu grupo usando os dados das vendas
+  // (os TXT vêm em ordem: cada subgrupo aparece DEPOIS do seu grupo, então
+  // usamos a ordem de aparição no arquivo ou inferência por nome)
+  const subgruposPorGrupo = inferirSubgruposPorGrupo(vendas);
+  const listaSubgrupos = (subgruposPorGrupo[grupo] || []).map(nome => ({
+    nome,
+    ...somaSubgrupos[nome]
+  })).filter(s => s.total > 0);
+
+  listaSubgrupos.sort((a,b) => b.total - a.total);
+
+  if (!listaSubgrupos.length) {
+    document.getElementById('composicao-subgrupos').innerHTML =
+      '<p class="text-muted" style="padding:20px">Sem subgrupos identificados para este grupo</p>';
+  } else {
+    const maior = listaSubgrupos[0].total;
+    const html = listaSubgrupos.map(s => {
+      const pct = totalGrupo ? (s.total / totalGrupo) * 100 : 0;
+      const barraLarg = (s.total / maior) * 100;
+      return `
+        <div class="composicao-item-sub">
+          <div class="composicao-item-head">
+            <span>${s.nome}</span>
+            <div class="composicao-item-vals">
+              <span class="composicao-item-valor">${fmtMoeda(s.total)}</span>
+              <span class="composicao-item-pct">${pct.toFixed(1)}%</span>
+            </div>
+          </div>
+          <div class="composicao-barra composicao-barra-sub">
+            <div class="composicao-barra-fill" style="width:${barraLarg}%"></div>
+          </div>
+          <div class="composicao-item-meta">${fmtInt(s.qtd)} unidades</div>
+        </div>
+      `;
+    }).join('');
+    document.getElementById('composicao-subgrupos').innerHTML = html;
+  }
+
+  document.getElementById('composicao-sub-titulo').innerHTML =
+    `Subgrupos de <strong>${grupo}</strong>`;
+  document.getElementById('composicao-grupos').style.display = 'none';
+  document.getElementById('composicao-subgrupos-wrap').style.display = 'block';
+  document.getElementById('sub-composicao').textContent = `${listaSubgrupos.length} subgrupos em ${grupo}`;
+}
+
+// Infere qual subgrupo pertence a qual grupo, analisando os nomes.
+// Mapeamento baseado nos dados reais observados no PDV da Primus.
+function inferirSubgruposPorGrupo(vendas) {
+  const mapa = {
+    'REFEICOES': new Set(),
+    'BEBIDAS': new Set(),
+    'DIVERSOS': new Set()
+  };
+
+  // Dicionário heurístico — palavras que indicam BEBIDA
+  const ehBebida = nome => {
+    const up = nome.toUpperCase();
+    const palavrasBebida = [
+      'CERVEJA', 'REFRI', 'SUCO', 'CAFE', 'DOSE', 'DRINK', 'DRINKS',
+      'AGUA', 'CHA', 'KOMBUCHA', 'CAIPIRINHA', 'CAIPIROSKA',
+      'LONGNECK', 'SHOT', 'SODA', 'BEBIDA'
+    ];
+    return palavrasBebida.some(p => up.includes(p));
+  };
+
+  // Nomes que normalmente são DIVERSOS
+  const ehDiversos = nome => {
+    const up = nome.toUpperCase();
+    return up.includes('DIVERSOS') || up === 'EMBALAGEM' ||
+           up.includes('COPO') || up.includes('GUARNICAO') ||
+           up.includes('REPOSICAO');
+  };
+
+  // Coleta todos os subgrupos que apareceram nos dados
+  const todos = new Set();
+  vendas.forEach(v => (v.subgrupos || []).forEach(s => todos.add(s.nome)));
+
+  todos.forEach(nome => {
+    if (ehDiversos(nome))      mapa['DIVERSOS'].add(nome);
+    else if (ehBebida(nome))   mapa['BEBIDAS'].add(nome);
+    else                       mapa['REFEICOES'].add(nome);
+  });
+
+  // Converte Sets em arrays
+  return {
+    REFEICOES: [...mapa['REFEICOES']],
+    BEBIDAS:   [...mapa['BEBIDAS']],
+    DIVERSOS:  [...mapa['DIVERSOS']]
+  };
 }
 
 // ===== GRÁFICO: HORAS =====
@@ -659,38 +761,46 @@ function renderRankingVendedores(vendas) {
 }
 
 // ===== GRÁFICO: TOP 10 PRATOS (grupo REFEIÇÕES) =====
-// Busca produtos que pertencem ao grupo REFEIÇÕES.
-// Como o TXT do PDV não diz explicitamente qual grupo um produto pertence,
-// uso heurística: se o produto NÃO aparece em grupos tipo BEBIDAS/DIVERSOS
-// e está entre os produtos do dia, consideramos refeição.
-// Na prática, identifico os produtos de refeições cruzando com os subgrupos
-// que claramente não são bebidas.
+// Regras definidas pelo usuário (Jhonathan):
+// INCLUI: PEIXADA, FILE, VENTRECHA, MOJICA/MOQUECA, PINTADO, COMBINADO, INDIVIDUAL
+// EXCLUI: PASSAPORT KIDS, BATATA FRITA, PASTEL, BOLINHO, CALDO, PETISCO,
+//         PORCAO (porção de compartilhar), UNIDADE (petisco), KIDS que não é file mignon
 function renderGraficoPratos(vendas) {
   chartsAtivos.pratos?.destroy?.();
 
-  // Subgrupos que NÃO são refeições (bebidas e afins) — esses serão excluídos
-  const naoRefeicao = new Set([
-    'CERVEJAS', 'REFRIGERANTES E SUCOS', 'CAFE ESPRESSO', 'DOSES', 'DRINKS',
-    'DIVERSOS', 'SOBREMESAS', 'SORVETES'
-  ]);
-
-  // Mapa produto → subgrupo (preenchemos heurística abaixo)
-  // Como o TXT lista SUBGRUPO e PRODUTO separadamente, sem dizer qual produto
-  // pertence a qual subgrupo, uso uma regra: se o produto tem palavras de
-  // comida (PEIXADA, FILE, COSTELINHA, PASTEL, etc), é refeição.
-  const palavrasRefeicao = [
-    'PEIXADA', 'MOJICA', 'VENTRECHA', 'PINTADO', 'TAMBATINGA', 'MOQUECA',
-    'FILE', 'COMBINADO', 'KIDS', 'PARMEGIANA', 'PETISCO', 'PASTEL', 'BOLINHO',
-    'CALDO', 'BATATA FRITA', 'FRANGO', 'PICADINHO', 'PALITO', 'COSTELINHA',
-    'INDIVIDUAL', 'MIX', 'PIRAO'
+  // Palavras que DEFINEM o produto como PRATO PRINCIPAL (lista positiva)
+  const palavrasPratos = [
+    'PEIXADA', 'FILE', 'VENTRECHA', 'MOJICA', 'MOQUECA',
+    'PINTADO', 'COMBINADO', 'INDIVIDUAL', 'TAMBATINGA',
+    'PARMEGIANA', 'COSTELINHA', 'FRANGO'
   ];
+
+  // Palavras que EXCLUEM o produto (lista negativa, tem prioridade)
+  const exclusoes = [
+    'PASSAPORT',      // passaport kids = entrada
+    'BATATA',         // batata frita = entrada
+    'PASTEL',         // pastel de peixe/carne = entrada
+    'BOLINHO',        // bolinho de peixe = entrada
+    'CALDO',          // caldo de peixe = entrada
+    'PETISCO',        // mix de petiscos = entrada
+    'PORCAO',         // porção de ventrecha = pra compartilhar
+    'UNIDADE',        // unidade de file/ventrecha = petisco
+    'GUARNICAO',      // guarnição = acompanhamento
+    'REPOSICAO'       // reposição de peça = não é venda real
+  ];
+
+  function ehPrato(nomeProduto) {
+    const up = nomeProduto.toUpperCase();
+    // Se contém exclusão, NÃO é prato
+    if (exclusoes.some(x => up.includes(x))) return false;
+    // Se contém palavra de prato, É prato
+    return palavrasPratos.some(p => up.includes(p));
+  }
 
   const soma = {};
   vendas.forEach(v => {
     (v.produtos || []).forEach(p => {
-      const nomeUp = p.nome.toUpperCase();
-      const ehRefeicao = palavrasRefeicao.some(palavra => nomeUp.includes(palavra));
-      if (ehRefeicao) {
+      if (ehPrato(p.nome)) {
         if (!soma[p.nome]) soma[p.nome] = { qtd: 0, total: 0 };
         soma[p.nome].qtd   += p.qtd || 0;
         soma[p.nome].total += p.total || 0;
@@ -762,22 +872,44 @@ function renderGraficoPratos(vendas) {
 }
 
 // ===== GRÁFICO: RANKING VENDEDOR × ENTRADAS =====
-// Mostra quantas entradas cada vendedor vendeu (do subgrupo ENTRADAS).
-// Como o TXT não associa diretamente produto→vendedor, usamos proxy:
-// calculamos o % que ENTRADAS representa do faturamento total do dia,
-// e aplicamos a mesma proporção ao faturamento de cada vendedor.
-// Não é perfeito mas é a melhor aproximação possível com os dados disponíveis.
+// Mostra quantas entradas cada vendedor vendeu.
+// Se o dia tiver `vendedoresDetalhado` (upload Vendedor × Produto),
+// usa valores REAIS. Caso contrário, estima por proporção.
 //
-// Alternativa: se um dia o PDV fornecer "vendedor × produto", usamos isso direto.
+// Palavras-chave de ENTRADAS (pra filtrar produtos do detalhado):
 function renderGraficoEntradas(vendas) {
   chartsAtivos.entradas?.destroy?.();
 
-  // Calcula para cada dia: unidades totais de ENTRADAS / total de itens
-  // E soma por vendedor usando essa proporção
+  // Palavras que definem ENTRADAS no cardápio Primus
+  const palavrasEntrada = [
+    'BOLINHO', 'PASTEL', 'CALDO', 'PETISCO',
+    'BATATA FRITA', 'MIX DE PETISCOS', 'PASSAPORT'
+  ];
+
+  const ehEntrada = nome => {
+    const up = nome.toUpperCase();
+    return palavrasEntrada.some(p => up.includes(p));
+  };
+
   const somaVend = {};
+  let algumDetalhado = false;  // pra saber se mostrar "dados reais" ou "estimado"
 
   vendas.forEach(v => {
-    // Acha o subgrupo ENTRADAS do dia
+    // 1) Se tem detalhado, usa ele (VALOR REAL)
+    if (v.vendedoresDetalhado && v.vendedoresDetalhado.length > 0) {
+      algumDetalhado = true;
+      v.vendedoresDetalhado.forEach(vd => {
+        const entradas = (vd.produtos || []).filter(p => ehEntrada(p.nome));
+        if (!entradas.length) return;
+        if (!somaVend[vd.nome]) somaVend[vd.nome] = { qtd: 0, total: 0, real: true };
+        somaVend[vd.nome].qtd   += entradas.reduce((s,p) => s + (p.qtd || 0), 0);
+        somaVend[vd.nome].total += entradas.reduce((s,p) => s + (p.total || 0), 0);
+        somaVend[vd.nome].real = true;
+      });
+      return;  // não faz fallback neste dia
+    }
+
+    // 2) Fallback: estima por proporção (valor antigo)
     const entradasDia = (v.subgrupos || []).find(s =>
       s.nome.toUpperCase() === 'ENTRADAS'
     );
@@ -788,11 +920,12 @@ function renderGraficoEntradas(vendas) {
 
     const proporcao = entradasDia.qtd / totalItensDia;
 
-    // Aplica a proporção sobre os itens de cada vendedor
     (v.vendedores || []).forEach(vd => {
       const entradasEstimadas = (vd.qtd || 0) * proporcao;
       const valorEstimado = (vd.total || 0) * (entradasDia.total / (v.totais?.total || 1));
-      if (!somaVend[vd.nome]) somaVend[vd.nome] = { qtd: 0, total: 0 };
+      // Se ainda não tem entrada com 'real' marcado, marca como não-real (estimado)
+      if (!somaVend[vd.nome]) somaVend[vd.nome] = { qtd: 0, total: 0, real: false };
+      if (somaVend[vd.nome].real) return;  // já tem dado real desse vendedor em outro dia, não mistura
       somaVend[vd.nome].qtd   += entradasEstimadas;
       somaVend[vd.nome].total += valorEstimado;
     });
@@ -825,7 +958,7 @@ function renderGraficoEntradas(vendas) {
     data: {
       labels,
       datasets: [{
-        label: 'Entradas (estimado)',
+        label: algumDetalhado ? 'Entradas (real)' : 'Entradas (estimado)',
         data: qtds,
         backgroundColor: cores.verde,
         borderRadius: 6,
@@ -842,7 +975,8 @@ function renderGraficoEntradas(vendas) {
             title: ctx => entries[ctx[0].dataIndex][0],
             label: ctx => {
               const i = ctx.dataIndex;
-              return `~${fmtInt(qtds[i])} entradas · ${fmtMoeda(valores[i])} (estimado)`;
+              const fonteDado = entries[i][1].real ? '(REAL)' : '(estimado)';
+              return `${fmtInt(qtds[i])} entradas · ${fmtMoeda(valores[i])} ${fonteDado}`;
             }
           }
         }
@@ -859,7 +993,14 @@ function renderGraficoEntradas(vendas) {
     }
   });
 
-  document.getElementById('sub-entradas').textContent = `valores estimados por proporção`;
+  if (algumDetalhado) {
+    const todosReais = entries.every(e => e[1].real);
+    document.getElementById('sub-entradas').innerHTML = todosReais
+      ? '<span class="badge-real">✓ valores reais</span>'
+      : '<span class="badge-real">✓ valores reais (alguns dias)</span> + estimados';
+  } else {
+    document.getElementById('sub-entradas').textContent = 'valores estimados por proporção';
+  }
 }
 
 // ===== EXPLORADOR DE DADOS =====
@@ -945,60 +1086,89 @@ function atualizarExplorador() {
 
   const resultado = document.getElementById('explorador-resultado');
 
-  // Agrupa conforme a dimensão escolhida, aplicando os filtros
+  // Agrupa conforme a dimensão escolhida
   const buckets = {}; // { chave: { qtd, total, dias: Set } }
 
-  // Detecta se alguma estimativa por proporção foi usada (pra mostrar aviso)
+  // Detecta se houve uso de proporção (mostra aviso amarelo) ou detalhado (mostra badge verde)
   let usouProporcao = false;
+  let usouDetalhado = false;
 
+  // ========== CAMINHO 1: USO DE DETALHADO ==========
+  // Se a dimensão é PRODUTO e filtra por vendedor, usa detalhado (dado real)
+  // Se a dimensão é VENDEDOR e filtra por produto, usa detalhado
+  const podeUsarDetalhado = (
+    (dimensao === 'produto'  && fVend) ||
+    (dimensao === 'vendedor' && fProduto)
+  );
+
+  if (podeUsarDetalhado) {
+    vendas.forEach(v => {
+      if (!v.vendedoresDetalhado?.length) return;  // pula dias sem detalhado
+      usouDetalhado = true;
+      v.vendedoresDetalhado.forEach(vd => {
+        if (fVend && vd.nome !== fVend) return;
+        (vd.produtos || []).forEach(p => {
+          if (fProduto && p.nome !== fProduto) return;
+          const chave = dimensao === 'produto' ? p.nome : vd.nome;
+          if (!buckets[chave]) buckets[chave] = { qtd: 0, total: 0, dias: new Set() };
+          buckets[chave].qtd   += p.qtd || 0;
+          buckets[chave].total += p.total || 0;
+          buckets[chave].dias.add(v.id);
+        });
+      });
+    });
+
+    // Se conseguiu preencher buckets pelo detalhado, pula a lógica de proporção
+    if (Object.keys(buckets).length > 0) {
+      return renderizarExploradorResultado(buckets, dimensao, { usouDetalhado: true, usouProporcao: false });
+    }
+  }
+
+  // ========== CAMINHO 2: USO DE PROPORÇÃO / FILTRO DIRETO ==========
   vendas.forEach(v => {
     const dataDia = v.id;
     const totalDia = v.totais?.total || 0;
     const qtdDia   = v.totais?.qtd || 0;
     if (!totalDia) return;
 
-    // Passo 1: descobrir o "peso" desse dia de acordo com os filtros
-    // (qual fração do dia conta pra esse filtro)
-    let pesoValor = 1; // multiplicador sobre valor (total)
-    let pesoQtd   = 1; // multiplicador sobre quantidade (qtd)
+    // Passo 1: pesos proporcionais dos filtros que não coincidem com a dimensão
+    let pesoValor = 1;
+    let pesoQtd   = 1;
 
-    // Filtro por vendedor: aplica proporção do vendedor no total do dia
-    if (fVend) {
+    if (fVend && dimensao !== 'vendedor') {
       const vd = (v.vendedores || []).find(x => x.nome === fVend);
-      if (!vd) return; // vendedor não trabalhou nesse dia
+      if (!vd) return;
       pesoValor *= vd.total / totalDia;
       pesoQtd   *= (qtdDia ? vd.qtd / qtdDia : 0);
-      if (dimensao !== 'vendedor') usouProporcao = true;
+      usouProporcao = true;
     }
 
-    // Filtro por subgrupo: aplica proporção do subgrupo no total do dia
-    if (fSubgrupo) {
+    if (fSubgrupo && dimensao !== 'subgrupo') {
       const sg = (v.subgrupos || []).find(x => x.nome === fSubgrupo);
-      if (!sg) return; // subgrupo não vendeu nesse dia
+      if (!sg) return;
       pesoValor *= sg.total / totalDia;
       pesoQtd   *= (qtdDia ? sg.qtd / qtdDia : 0);
-      if (dimensao !== 'subgrupo') usouProporcao = true;
+      usouProporcao = true;
     }
 
-    // Filtro por produto: aplica proporção do produto no total do dia
-    if (fProduto) {
+    if (fProduto && dimensao !== 'produto') {
       const prd = (v.produtos || []).find(x => x.nome === fProduto);
-      if (!prd) return; // produto não vendeu nesse dia
+      if (!prd) return;
       pesoValor *= prd.total / totalDia;
       pesoQtd   *= (qtdDia ? prd.qtd / qtdDia : 0);
-      if (dimensao !== 'produto') usouProporcao = true;
+      usouProporcao = true;
     }
 
-    // Passo 2: escolher a fonte (array de itens) conforme a dimensão
+    // Passo 2: fonte com filtro direto aplicado quando coincide com a dimensão
     let fonte;
     if (dimensao === 'vendedor') {
-      fonte = v.vendedores || [];
+      fonte = (v.vendedores || []).filter(x => !fVend || x.nome === fVend);
     } else if (dimensao === 'grupo') {
       fonte = v.grupos || [];
     } else if (dimensao === 'subgrupo') {
-      fonte = v.subgrupos || [];
+      fonte = (v.subgrupos || []).filter(x => !fSubgrupo || x.nome === fSubgrupo);
     } else if (dimensao === 'produto') {
-      fonte = v.produtos || [];
+      fonte = (v.produtos || []).filter(x => !fProduto || x.nome === fProduto);
     } else if (dimensao === 'hora') {
       fonte = (v.horas || []).map(h => ({ ...h, nome: h.faixa }));
     } else if (dimensao === 'dia') {
@@ -1007,16 +1177,11 @@ function atualizarExplorador() {
       fonte = [];
     }
 
-    // Passo 3: aplicar os pesos nos itens da fonte
     fonte.forEach(item => {
-      let chave;
-      if (dimensao === 'dia') chave = fmtData(dataDia);
-      else chave = item.nome;
-
+      const chave = dimensao === 'dia' ? fmtData(dataDia) : item.nome;
       const itemValor = (item.total || 0) * pesoValor;
       const itemQtd   = (item.qtd || 0) * pesoQtd;
 
-      // Se o item tem valor zero depois dos filtros, pula
       if (itemValor < 0.01 && itemQtd < 0.01) return;
 
       if (!buckets[chave]) buckets[chave] = { qtd: 0, total: 0, dias: new Set() };
@@ -1025,6 +1190,15 @@ function atualizarExplorador() {
       buckets[chave].dias.add(dataDia);
     });
   });
+
+  renderizarExploradorResultado(buckets, dimensao, { usouDetalhado, usouProporcao });
+}
+
+function renderizarExploradorResultado(buckets, dimensao, flags) {
+  const resultado = document.getElementById('explorador-resultado');
+  const fVend      = document.getElementById('expl-vendedor').value;
+  const fSubgrupo  = document.getElementById('expl-subgrupo').value;
+  const fProduto   = document.getElementById('expl-produto').value;
 
   const ordenado = Object.entries(buckets)
     .map(([k, v]) => ({ chave: k, qtd: v.qtd, total: v.total, dias: v.dias.size }))
@@ -1043,9 +1217,13 @@ function atualizarExplorador() {
   const maior = Math.max(...ordenado.map(r => r.total));
   const totalGeral = ordenado.reduce((s, r) => s + r.total, 0);
   const qtdTotal = ordenado.reduce((s, r) => s + r.qtd, 0);
-  const avisoProporcao = usouProporcao
-    ? `<div class="expl-aviso">⚠️ Valores estimados por proporção — o TXT do PDV não cruza diretamente ${descreverFiltros(fVend, fSubgrupo, fProduto, dimensao)}. O cálculo usa a participação de cada filtro sobre o total do dia.</div>`
-    : '';
+
+  let avisoProporcao = '';
+  if (flags.usouDetalhado) {
+    avisoProporcao = '<div class="expl-aviso expl-aviso-ok">✓ Valores REAIS — extraídos do relatório Vendedor × Produto</div>';
+  } else if (flags.usouProporcao) {
+    avisoProporcao = `<div class="expl-aviso">⚠️ Valores estimados por proporção — o TXT do PDV não cruza diretamente ${descreverFiltros(fVend, fSubgrupo, fProduto, dimensao)}. Pra ter valores reais, suba o relatório Vendedor × Produto na aba Vendas.</div>`;
+  }
 
   resultado.innerHTML = `
     <div class="expl-resumo">
