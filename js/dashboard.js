@@ -881,9 +881,10 @@ function renderGraficoEntradas(vendas) {
   chartsAtivos.entradas?.destroy?.();
 
   // Palavras que definem ENTRADAS no cardápio Primus
+  // PASSAPORT KIDS é "outros" / categoria própria, não vai aqui
   const palavrasEntrada = [
     'BOLINHO', 'PASTEL', 'CALDO', 'PETISCO',
-    'BATATA FRITA', 'MIX DE PETISCOS', 'PASSAPORT'
+    'BATATA FRITA', 'MIX DE PETISCOS'
   ];
 
   const ehEntrada = nome => {
@@ -1077,6 +1078,99 @@ function popularDropdown(id, items, todosLabel) {
     arr.map(x => `<option value="${x}">${x}</option>`).join('');
 }
 
+// Constrói um mapa "nome do produto" → "nome do subgrupo" baseado em heurísticas.
+// O TXT do PDV infelizmente não associa produto × subgrupo diretamente,
+// então usamos regras construídas a partir dos dados reais da Primus Peixaria.
+// Esse mapa é usado no Explorador pra permitir cruzamentos precisos.
+function construirMapaProdutoSubgrupo(vendas) {
+  const mapa = new Map();
+  if (!vendas.length) return mapa;
+
+  // Coleta todos os subgrupos e produtos que apareceram
+  const subgrupos = new Set();
+  const produtos  = new Set();
+  vendas.forEach(v => {
+    (v.subgrupos || []).forEach(s => subgrupos.add(s.nome));
+    (v.produtos  || []).forEach(p => produtos.add(p.nome));
+  });
+
+  // Regras heurísticas — cada produto é classificado pelo nome.
+  // Ordem importa: regras mais específicas vêm primeiro.
+  function classificar(nome) {
+    const up = nome.toUpperCase();
+
+    // ENTRADAS
+    if (['BOLINHO DE PEIXE','PASTEL DE PEIXE','PASTEL DE CARNE',
+         'CALDO DE PEIXE','MIX DE PETISCOS','BATATA FRITA',
+         'PORCAO DE VENTRECHA','UNIDADE DE FILE','UNIDADE DE VENTRECHA'
+        ].some(x => up.includes(x))) return 'ENTRADAS';
+
+    // PRATOS KIDS
+    if (up.includes('KIDS') && !up.includes('PASSAPORT')) return 'PRATOS KIDS';
+
+    // PASSAPORT KIDS (subgrupo próprio — não é "entrada" nem "kids")
+    // O PDV classifica como "PRATOS KIDS" — confirma-se pelos dados
+    if (up.includes('PASSAPORT')) return 'PRATOS KIDS';
+
+    // PRATOS COMPARTILHADOS (INTEIRAS e alguns sem o "INTEIRA" explícito)
+    if (up.includes('INTEIRA') ||
+        up.includes('COMBINADO') ||
+        up === 'PEIXADA ESPECIAL') return 'PRATOS COMPARTILHADOS';
+
+    // ESPECIALIDADES DA CASA (metades de peixada/ventrecha)
+    if (up.startsWith('1/2 ') ||
+        up.includes('MOQUECA DE BANANA') ||
+        up.includes('PINTADO A PALITO')) return 'ESPECIALIDADES DA CASA';
+
+    // PRATOS INDIVIDUAIS
+    if (up.includes('INDIVIDUAL')) return 'PRATOS INDIVIDUAIS';
+
+    // SUGESTOES DO CHEFE
+    if (up.includes('FILE MIGNON FIT') || up.includes('COSTELINHA')) return 'SUGESTOES DO CHEFE';
+
+    // GUARNICOES
+    if (up.includes('GUARNICAO')) return 'GUARNICOES';
+
+    // CERVEJAS
+    if (['HEINEKEN','ORIGINAL','LOUVADA','STELLA','KOMBUCHA','CDB'].some(x => up.includes(x))) {
+      return 'CERVEJAS';
+    }
+
+    // REFRIGERANTES E SUCOS (TONICA pega AGUA TONICA e AGGUA TONICA com typo)
+    if (['COCA COLA','SPRITE','FANTA','KUAT','SUCO','SODA','CHA GELADO','AGUA','PREMIUM','TONICA']
+        .some(x => up.includes(x))) return 'REFRIGERANTES E SUCOS';
+
+    // CAFE ESPRESSO
+    if (['CAFE','CAPPUCCINO','CHOCOLATE PROTEICO'].some(x => up.includes(x))) return 'CAFE ESPRESSO';
+
+    // DOSES
+    if (['DOSE','SHOT'].some(x => up.includes(x))) return 'DOSES';
+
+    // DRINKS
+    if (['CAIPIRINHA','CAIPIROSKA'].some(x => up.includes(x))) return 'DRINKS';
+
+    // SORVETES (gelatos e sorbets)
+    if (['GELATO','SORBET'].some(x => up.includes(x))) return 'SORVETES';
+
+    // SOBREMESAS
+    if (up.includes('BROWNIE')) return 'SOBREMESAS';
+
+    // DIVERSOS (embalagens, copo, reposicao)
+    if (['EMBALAGEM','COPO','REPOSICAO'].some(x => up.includes(x))) return 'DIVERSOS';
+
+    return null;
+  }
+
+  produtos.forEach(nome => {
+    const sg = classificar(nome);
+    if (sg && subgrupos.has(sg)) {
+      mapa.set(nome, sg);
+    }
+  });
+
+  return mapa;
+}
+
 function atualizarExplorador() {
   const vendas = vendasExploradorAtual;
   const dimensao   = document.getElementById('expl-dimensao').value;
@@ -1093,32 +1187,58 @@ function atualizarExplorador() {
   let usouProporcao = false;
   let usouDetalhado = false;
 
-  // ========== CAMINHO 1: USO DE DETALHADO ==========
-  // Se a dimensão é PRODUTO e filtra por vendedor, usa detalhado (dado real)
-  // Se a dimensão é VENDEDOR e filtra por produto, usa detalhado
-  const podeUsarDetalhado = (
-    (dimensao === 'produto'  && fVend) ||
-    (dimensao === 'vendedor' && fProduto)
-  );
+  // Monta mapa "produto → subgrupo" a partir dos dados de vendas (vem do relatório geral).
+  // Usa nome exato do produto. Se dois dias têm o mesmo produto em subgrupos diferentes,
+  // o último vence (mas na prática não acontece).
+  const mapaProdutoSubgrupo = construirMapaProdutoSubgrupo(vendas);
+
+  // ========== CAMINHO 1: USO DE DETALHADO (valores REAIS) ==========
+  // Cenários cobertos:
+  // - Dim=Produto  + filtro Vendedor        → detalhado direto
+  // - Dim=Vendedor + filtro Produto         → detalhado direto
+  // - Dim=Produto  + filtro Subgrupo        → detalhado + mapa
+  // - Dim=Vendedor + filtro Subgrupo        → detalhado + mapa (o caso do print do Jhonathan!)
+  // - Dim=Subgrupo + filtro Vendedor        → detalhado + mapa
+  // - Dim=Subgrupo + filtro Produto         → detalhado + mapa
+  const temSubgrupoMapeavel = fSubgrupo && mapaProdutoSubgrupo.size > 0;
+
+  const podeUsarDetalhado =
+    (dimensao === 'produto'  && (fVend || fSubgrupo)) ||
+    (dimensao === 'vendedor' && (fProduto || temSubgrupoMapeavel)) ||
+    (dimensao === 'subgrupo' && (fVend || fProduto));
 
   if (podeUsarDetalhado) {
     vendas.forEach(v => {
       if (!v.vendedoresDetalhado?.length) return;  // pula dias sem detalhado
-      usouDetalhado = true;
+
       v.vendedoresDetalhado.forEach(vd => {
         if (fVend && vd.nome !== fVend) return;
         (vd.produtos || []).forEach(p => {
           if (fProduto && p.nome !== fProduto) return;
-          const chave = dimensao === 'produto' ? p.nome : vd.nome;
+
+          // Se filtra por subgrupo, testa se o produto pertence a ele
+          if (fSubgrupo) {
+            const subgrupoDoProduto = mapaProdutoSubgrupo.get(p.nome);
+            if (!subgrupoDoProduto || subgrupoDoProduto !== fSubgrupo) return;
+          }
+
+          // Descobre a chave do bucket conforme a dimensão
+          let chave;
+          if (dimensao === 'produto')        chave = p.nome;
+          else if (dimensao === 'vendedor')  chave = vd.nome;
+          else if (dimensao === 'subgrupo')  chave = mapaProdutoSubgrupo.get(p.nome) || '(sem subgrupo)';
+          else                               chave = p.nome;
+
           if (!buckets[chave]) buckets[chave] = { qtd: 0, total: 0, dias: new Set() };
           buckets[chave].qtd   += p.qtd || 0;
           buckets[chave].total += p.total || 0;
           buckets[chave].dias.add(v.id);
+          usouDetalhado = true;
         });
       });
     });
 
-    // Se conseguiu preencher buckets pelo detalhado, pula a lógica de proporção
+    // Se conseguiu preencher buckets pelo detalhado, não precisa cair na proporção
     if (Object.keys(buckets).length > 0) {
       return renderizarExploradorResultado(buckets, dimensao, { usouDetalhado: true, usouProporcao: false });
     }

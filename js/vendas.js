@@ -586,24 +586,43 @@ async function carregarListaImportados() {
       return;
     }
 
-    lista.innerHTML = vendas.map(v => `
-      <div class="importado-item">
-        <div class="importado-data">
-          <div class="importado-dia">${fmtData(v.id)}</div>
-          <div class="importado-dow">${diaSemana(v.id)}</div>
-        </div>
-        <div class="importado-info">
-          <div class="importado-total">${fmtMoeda(v.totais?.total)}</div>
-          <div class="importado-meta">
-            ${fmtInt(v.totais?.qtd)} itens · ${(v.vendedores || []).length} vendedores
+    lista.innerHTML = vendas.map(v => {
+      const temGeral     = v.totais?.total != null;        // todo dia importado tem geral
+      const temDetalhado = (v.vendedoresDetalhado || []).length > 0;
+      return `
+        <div class="importado-item">
+          <div class="importado-data">
+            <div class="importado-dia">${fmtData(v.id)}</div>
+            <div class="importado-dow">${diaSemana(v.id)}</div>
+          </div>
+          <div class="importado-info">
+            <div class="importado-total">${fmtMoeda(v.totais?.total)}</div>
+            <div class="importado-meta">
+              ${fmtInt(v.totais?.qtd)} itens · ${(v.vendedores || []).length} vendedores
+            </div>
+          </div>
+          <div class="importado-arquivos">
+            <div class="arq-status ${temGeral ? 'arq-ok' : 'arq-falta'}" title="Relatório geral do PDV">
+              <span class="arq-check">${temGeral ? '✓' : '—'}</span>
+              <span class="arq-label">Geral</span>
+            </div>
+            <div class="arq-status ${temDetalhado ? 'arq-ok' : 'arq-falta'}" title="Relatório Vendedor × Produto">
+              <span class="arq-check">${temDetalhado ? '✓' : '—'}</span>
+              <span class="arq-label">Detalhado</span>
+            </div>
+          </div>
+          <div class="importado-acoes">
+            <button class="btn btn-ghost btn-sm" onclick="verDetalheVendas('${v.id}')">Ver detalhes</button>
           </div>
         </div>
-        <div class="importado-acoes">
-          <button class="btn btn-ghost btn-sm" onclick="verDetalheVendas('${v.id}')">Ver detalhes</button>
-        </div>
-      </div>
-    `).join('');
-    document.getElementById('sub-importados').textContent = `${vendas.length} ${vendas.length === 1 ? 'dia' : 'dias'} no total`;
+      `;
+    }).join('');
+    const comDetalhado = vendas.filter(v => (v.vendedoresDetalhado || []).length > 0).length;
+    const suffix = comDetalhado > 0
+      ? ` · ${comDetalhado} com detalhamento`
+      : '';
+    document.getElementById('sub-importados').textContent =
+      `${vendas.length} ${vendas.length === 1 ? 'dia' : 'dias'} no total${suffix}`;
   } catch (e) {
     console.error(e);
     lista.innerHTML = `<div class="preview-err">Erro ao carregar: ${e.message}</div>`;
