@@ -823,3 +823,210 @@ body {
   justify-content: flex-end;
   margin-top: 18px;
 }
+
+/* ========================================================================
+   EXPLORADOR DE DADOS (filtros avançados)
+   ======================================================================== */
+
+.explorador-filtros {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 20px;
+  padding: 16px 18px;
+  background: linear-gradient(135deg, #faf8f4 0%, #f5f3f0 100%);
+  border-radius: 12px;
+  border: 1px solid var(--cinza-borda);
+}
+.explorador-filtros .filtro-group { min-width: 0; }
+.explorador-filtros .filtro-group label {
+  display: block;
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  color: var(--cinza-texto);
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  font-weight: 600;
+  margin-bottom: 5px;
+}
+.explorador-filtros select {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1.5px solid var(--cinza-borda);
+  border-radius: 8px;
+  font-size: 12px;
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 500;
+  background: white;
+  outline: none;
+  color: var(--preto);
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.explorador-filtros select:hover { border-color: var(--vinho); }
+.explorador-filtros select:focus {
+  border-color: var(--amarelo);
+  box-shadow: 0 0 0 3px rgba(250,185,0,0.15);
+}
+.explorador-filtros .btn { align-self: end; }
+
+/* Resumo de KPIs dentro do explorador */
+.expl-resumo {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.expl-resumo-item {
+  background: var(--cinza-bg);
+  border-radius: 10px;
+  padding: 12px 16px;
+  border-left: 3px solid var(--vinho);
+}
+.expl-resumo-label {
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  color: var(--cinza-texto);
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  margin-bottom: 4px;
+}
+.expl-resumo-val {
+  font-family: 'Raleway', sans-serif;
+  font-weight: 800;
+  font-size: 18px;
+  color: var(--preto);
+}
+.expl-resumo-val.vinho { color: var(--vinho); }
+
+.expl-aviso {
+  background: var(--amarelo-bg);
+  border-left: 3px solid var(--amarelo);
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin-bottom: 14px;
+  font-size: 12px;
+  color: var(--amarelo-status);
+  font-weight: 500;
+}
+
+/* Tabela de resultados */
+.expl-tabela {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  background: white;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.expl-tabela thead {
+  background: var(--preto);
+}
+.expl-tabela thead th {
+  padding: 11px 14px;
+  color: white;
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  font-weight: 600;
+  text-align: left;
+}
+.expl-tabela .expl-th-pos { width: 40px; text-align: center; }
+.expl-tabela .expl-th-num { text-align: right; width: 110px; }
+.expl-tabela .expl-th-barra { width: 210px; }
+.expl-tabela tbody tr {
+  border-bottom: 1px solid var(--cinza-borda);
+  transition: background 0.12s;
+}
+.expl-tabela tbody tr:last-child { border-bottom: none; }
+.expl-tabela tbody tr:hover { background: var(--cinza-bg); }
+
+.expl-tabela td {
+  padding: 10px 14px;
+  vertical-align: middle;
+}
+.expl-td-pos {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  color: var(--cinza-texto);
+  text-align: center;
+  font-weight: 600;
+  width: 40px;
+}
+.expl-td-chave {
+  font-weight: 500;
+  color: var(--preto);
+  max-width: 260px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.expl-td-num {
+  font-family: 'DM Mono', monospace;
+  font-weight: 600;
+  text-align: right;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.expl-td-vinho { color: var(--vinho); }
+.expl-td-barra {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 180px;
+}
+.expl-barra-wrap {
+  flex: 1;
+  height: 6px;
+  background: var(--cinza-borda);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.expl-barra-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--vinho), var(--amarelo));
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+.expl-barra-pct {
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  color: var(--cinza-texto);
+  font-weight: 600;
+  min-width: 38px;
+  text-align: right;
+}
+
+/* Responsivo */
+@media (max-width: 900px) {
+  .explorador-filtros {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .explorador-filtros .btn { grid-column: 1 / -1; }
+}
+@media (max-width: 600px) {
+  .explorador-filtros { grid-template-columns: 1fr; }
+  .expl-resumo { grid-template-columns: 1fr; }
+  .expl-tabela { font-size: 11px; }
+  .expl-tabela thead th,
+  .expl-tabela td { padding: 8px 10px; }
+  .expl-th-barra,
+  .expl-td-barra { display: none; }
+  .expl-td-chave { max-width: 120px; }
+}
+
+/* ========================================================================
+   CARD DE CONTAGEM — ações
+   ======================================================================== */
+
+.contagem-acoes {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+.contagem-acoes .btn-ver {
+  flex: 1;
+}
