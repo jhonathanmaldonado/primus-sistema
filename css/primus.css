@@ -55,13 +55,25 @@ body {
 }
 .header-logo { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .logo-box {
-  width: 42px; height: 42px;
-  background: var(--amarelo);
+  width: 44px; height: 44px;
+  background: transparent;
   border-radius: 10px;
   display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+}
+.logo-box img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+/* Fallback: se não tiver imagem, mostra as letras */
+.logo-box:not(:has(img)) {
+  background: var(--amarelo);
   font-family: 'Raleway', sans-serif;
   font-weight: 900; font-size: 16px; color: var(--vinho);
-  flex-shrink: 0;
 }
 .logo-text h1 {
   font-family: 'Raleway', sans-serif;
@@ -869,7 +881,13 @@ body {
   border-color: var(--amarelo);
   box-shadow: 0 0 0 3px rgba(250,185,0,0.15);
 }
-.explorador-filtros .btn { align-self: end; }
+
+.explorador-botoes {
+  display: flex;
+  gap: 6px;
+  align-items: end;
+}
+.explorador-botoes .btn { white-space: nowrap; }
 
 /* Resumo de KPIs dentro do explorador */
 .expl-resumo {
@@ -1005,10 +1023,12 @@ body {
   .explorador-filtros {
     grid-template-columns: repeat(2, 1fr);
   }
-  .explorador-filtros .btn { grid-column: 1 / -1; }
+  .explorador-botoes { grid-column: 1 / -1; justify-content: flex-end; }
 }
 @media (max-width: 600px) {
   .explorador-filtros { grid-template-columns: 1fr; }
+  .explorador-botoes { flex-direction: column; }
+  .explorador-botoes .btn { width: 100%; }
   .expl-resumo { grid-template-columns: 1fr; }
   .expl-tabela { font-size: 11px; }
   .expl-tabela thead th,
