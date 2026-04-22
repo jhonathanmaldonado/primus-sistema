@@ -6,6 +6,7 @@ import { listarContagens } from './db.js';
 import { BEBIDAS, SORVETES, slugify } from './produtos.js';
 import { inicializarDashboard, recarregarDashboard } from './dashboard.js';
 import { inicializarVendas } from './vendas.js';
+import { inicializarUsuarios } from './usuarios.js';
 
 const sessao = exigirPerfil(['gestor']);
 if (!sessao) throw new Error('sem sessão');
@@ -49,7 +50,7 @@ function mostrarView(id) {
   document.getElementById('side-nav').classList.remove('mobile-open');
   // Carregadores específicos
   if (id === 'contagens') carregarContagens();
-  if (id === 'usuarios')  carregarUsuarios();
+  if (id === 'usuarios')  carregarUsuariosTab();
   if (id === 'dashboard') carregarDashboard();
   if (id === 'vendas')    carregarVendas();
 }
@@ -58,10 +59,10 @@ function mostrarView(id) {
 // (carregam apenas na primeira visita pra economizar leituras do Firestore)
 let dashboardCarregado = false;
 let vendasCarregado = false;
+let usuariosCarregado = false;
 
 async function carregarDashboard() {
   if (window._dashboardPrecisaRecarregar) {
-    // Foi uploaded um novo TXT — recarrega dados
     window._dashboardPrecisaRecarregar = false;
     await recarregarDashboard();
     return;
@@ -75,6 +76,12 @@ async function carregarVendas() {
   if (vendasCarregado) return;
   vendasCarregado = true;
   await inicializarVendas();
+}
+
+async function carregarUsuariosTab() {
+  if (usuariosCarregado) return;
+  usuariosCarregado = true;
+  await inicializarUsuarios();
 }
 
 Object.keys(views).forEach(id => {
@@ -242,28 +249,6 @@ document.getElementById('btn-limpar-filtros').onclick = () => {
   document.getElementById('filtro-data').value = '';
   renderizarContagens();
 };
-
-// ===== ABA: USUÁRIOS (básica - cadastro completo na PARTE 3) =====
-async function carregarUsuarios() {
-  const lista = document.getElementById('usuarios-lista');
-  lista.innerHTML = '<div style="text-align:center;padding:40px"><span class="spinner"></span> Carregando...</div>';
-  try {
-    const users = await listarUsuarios();
-    lista.innerHTML = users.map(u => `
-      <div class="user-card">
-        <div class="user-card-avatar">${iniciais(u.nome)}</div>
-        <div class="user-card-info">
-          <div class="user-card-nome">${u.nome}</div>
-          <div class="user-card-meta">
-            <span class="perfil-badge ${u.perfil}">${u.perfil}</span>
-          </div>
-        </div>
-      </div>
-    `).join('');
-  } catch (e) {
-    lista.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><h3>Erro</h3><p>' + e.message + '</p></div>';
-  }
-}
 
 // ===== UTILS =====
 function formatarDataPtBr(yyyymmdd) {

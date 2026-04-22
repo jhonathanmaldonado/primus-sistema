@@ -93,7 +93,7 @@ export async function inicializarDashboard() {
 
         <div class="card grafico-card">
           <div class="grafico-head">
-            <h3>🏆 Top 10 produtos</h3>
+            <h3>🏆 Top 10 produtos (por unidades)</h3>
             <span class="grafico-sub" id="sub-produtos"></span>
           </div>
           <div class="grafico-wrap" style="height:340px">
@@ -442,18 +442,21 @@ function renderGraficoHoras(vendas) {
   }
 }
 
-// ===== GRÁFICO: TOP PRODUTOS =====
+// ===== GRÁFICO: TOP PRODUTOS (por unidades vendidas) =====
 function renderGraficoProdutos(vendas) {
   chartsAtivos.produtos?.destroy?.();
   const soma = {};
   vendas.forEach(v => {
     (v.produtos || []).forEach(p => {
-      soma[p.nome] = (soma[p.nome] || 0) + (p.total || 0);
+      if (!soma[p.nome]) soma[p.nome] = { qtd: 0, total: 0 };
+      soma[p.nome].qtd   += p.qtd || 0;
+      soma[p.nome].total += p.total || 0;
     });
   });
-  const top = Object.entries(soma).sort((a,b) => b[1] - a[1]).slice(0, 10);
+  const top = Object.entries(soma).sort((a,b) => b[1].qtd - a[1].qtd).slice(0, 10);
   const labels = top.map(e => e[0].length > 28 ? e[0].slice(0,26) + '…' : e[0]);
-  const valores = top.map(e => e[1]);
+  const qtds   = top.map(e => e[1].qtd);
+  const valores = top.map(e => e[1].total);
 
   const ctx = document.getElementById('chart-produtos');
   if (!ctx) return;
@@ -463,8 +466,8 @@ function renderGraficoProdutos(vendas) {
     data: {
       labels,
       datasets: [{
-        label: 'Faturamento',
-        data: valores,
+        label: 'Unidades vendidas',
+        data: qtds,
         backgroundColor: cores.vinho,
         borderRadius: 6,
       }]
@@ -476,13 +479,21 @@ function renderGraficoProdutos(vendas) {
       plugins: {
         legend: { display: false },
         tooltip: {
-          callbacks: { label: ctx => fmtMoeda(ctx.parsed.x) }
+          callbacks: {
+            label: ctx => {
+              const i = ctx.dataIndex;
+              return `${fmtInt(qtds[i])} unidades · ${fmtMoeda(valores[i])}`;
+            }
+          }
         }
       },
       scales: {
         x: {
           beginAtZero: true,
-          ticks: { callback: v => 'R$ ' + (v >= 1000 ? (v/1000).toFixed(0) + 'k' : v) }
+          ticks: {
+            callback: v => fmtInt(v) + ' un',
+            precision: 0
+          }
         }
       }
     }

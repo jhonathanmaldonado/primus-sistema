@@ -19,10 +19,17 @@ export async function hashPin(pin) {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
 }
 
-// ===== BUSCAR TODOS OS USUÁRIOS =====
+// ===== BUSCAR TODOS OS USUÁRIOS (ativos) =====
 // Retorna lista de { id, nome, perfil } — SEM o hash do PIN.
-// Usado na tela de login pra mostrar a lista.
+// Usado na tela de login — só mostra ativos.
 export async function listarUsuarios() {
+  const arr = await listarUsuariosCompleto();
+  return arr.filter(u => u.ativo);
+}
+
+// ===== BUSCAR TODOS OS USUÁRIOS (incluindo inativos) =====
+// Usado no painel do gestor pra gerenciar.
+export async function listarUsuariosCompleto() {
   const snap = await getDocs(collection(db, COL_USUARIOS));
   const arr = [];
   snap.forEach(d => {
@@ -31,18 +38,21 @@ export async function listarUsuarios() {
       id: d.id,
       nome: data.nome,
       perfil: data.perfil,
-      ativo: data.ativo !== false
+      ativo: data.ativo !== false,
+      criadoEm: data.criadoEm || null
     });
   });
   // Ordena: gestor primeiro, depois gerente, depois barman; dentro disso por nome
   const ordem = { gestor: 0, gerente: 1, barman: 2 };
   arr.sort((a,b) => {
+    // Inativos sempre no final
+    if (a.ativo !== b.ativo) return a.ativo ? -1 : 1;
     const oa = ordem[a.perfil] ?? 99;
     const ob = ordem[b.perfil] ?? 99;
     if (oa !== ob) return oa - ob;
     return a.nome.localeCompare(b.nome, 'pt-BR');
   });
-  return arr.filter(u => u.ativo);
+  return arr;
 }
 
 // ===== FAZER LOGIN =====
@@ -120,6 +130,71 @@ export async function criarUsuario({ id, nome, perfil, pin }) {
   const docRef = id ? doc(db, COL_USUARIOS, id) : doc(collection(db, COL_USUARIOS));
   await setDoc(docRef, dados, { merge: false });
   return docRef.id;
+}
+
+// ===== EDITAR USUÁRIO (nome e/ou perfil) =====
+// Busca o doc atual, mescla os campos novos, regrava tudo
+// (as regras do Firestore exigem todos os campos obrigatórios na escrita).
+export async function atualizarUsuario(id, { nome, perfil }) {
+  const ref = doc(db, COL_USUARIOS, id);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) throw new Error('Usuário não encontrado.');
+  const atual = snap.data();
+
+  if (perfil && !['barman','gerente','gestor'].includes(perfil)) {
+    throw new Error('Perfil inválido.');
+  }
+  if (nome != null && (typeof nome !== 'string' || !nome.trim())) {
+    throw new Error('Nome não pode ser vazio.');
+  }
+
+  const novoDado = {
+    nome: nome != null ? nome.trim() : atual.nome,
+    perfil: perfil || atual.perfil,
+    pinHash: atual.pinHash,        // mantém o PIN atual
+    ativo: atual.ativo !== false,  // mantém status
+    criadoEm: atual.criadoEm || new Date().toISOString()
+  };
+  await setDoc(ref, novoDado, { merge: false });
+}
+
+// ===== TROCAR PIN =====
+export async function trocarPin(id, novoPin) {
+  if (!/^\d{4}$/.test(novoPin)) {
+    throw new Error('PIN deve ter exatamente 4 dígitos.');
+  }
+  const ref = doc(db, COL_USUARIOS, id);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) throw new Error('Usuário não encontrado.');
+  const atual = snap.data();
+
+  const novoDado = {
+    nome: atual.nome,
+    perfil: atual.perfil,
+    pinHash: await hashPin(novoPin),
+    ativo: atual.ativo !== false,
+    criadoEm: atual.criadoEm || new Date().toISOString()
+  };
+  await setDoc(ref, novoDado, { merge: false });
+}
+
+// ===== DESATIVAR / REATIVAR =====
+// Desativar preserva o documento (histórico das contagens continua associado).
+// Pessoa desativada não aparece na tela de login.
+export async function setAtivoUsuario(id, ativo) {
+  const ref = doc(db, COL_USUARIOS, id);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) throw new Error('Usuário não encontrado.');
+  const atual = snap.data();
+
+  const novoDado = {
+    nome: atual.nome,
+    perfil: atual.perfil,
+    pinHash: atual.pinHash,
+    ativo: !!ativo,
+    criadoEm: atual.criadoEm || new Date().toISOString()
+  };
+  await setDoc(ref, novoDado, { merge: false });
 }
 
 // ===== SEED INICIAL =====
