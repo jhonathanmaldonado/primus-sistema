@@ -1361,3 +1361,70 @@ body {
   border-left-color: var(--verde-status);
   color: var(--verde-status);
 }
+
+/* ========================================================================
+   STATUS DE ARQUIVOS (Dias importados)
+   ======================================================================== */
+
+.importado-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  gap: 18px;
+  align-items: center;
+}
+
+.importado-arquivos {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.arq-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  border-radius: 8px;
+  min-width: 66px;
+  font-size: 10px;
+  font-family: 'DM Mono', monospace;
+  line-height: 1.1;
+  gap: 2px;
+  transition: all 0.15s;
+}
+.arq-status.arq-ok {
+  background: var(--verde-bg);
+  color: var(--verde-status);
+  border: 1px solid var(--verde-status);
+}
+.arq-status.arq-falta {
+  background: var(--cinza-bg);
+  color: var(--cinza-texto);
+  border: 1px dashed var(--cinza-borda);
+  opacity: 0.7;
+}
+.arq-check {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+}
+.arq-label {
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  font-weight: 600;
+}
+
+/* Responsivo: empilha as infos em telas menores */
+@media (max-width: 800px) {
+  .importado-item {
+    grid-template-columns: auto 1fr;
+    gap: 12px;
+  }
+  .importado-arquivos,
+  .importado-acoes {
+    grid-column: 1 / -1;
+    margin-top: 6px;
+  }
+}
