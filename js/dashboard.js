@@ -56,7 +56,7 @@ export async function inicializarDashboard() {
       <!-- KPIs -->
       <div class="kpi-grid" id="kpi-grid"></div>
 
-      <!-- Gráficos linha 1 -->
+      <!-- Gráficos linha 1: faturamento diário + mix subgrupos -->
       <div class="graficos-grid">
         <div class="card grafico-card">
           <div class="grafico-head">
@@ -70,16 +70,16 @@ export async function inicializarDashboard() {
 
         <div class="card grafico-card">
           <div class="grafico-head">
-            <h3>🥧 Mix por grupo</h3>
+            <h3>🥧 Mix por subgrupo</h3>
             <span class="grafico-sub" id="sub-grupos"></span>
           </div>
-          <div class="grafico-wrap" style="max-height:280px">
+          <div class="grafico-wrap" style="max-height:320px">
             <canvas id="chart-grupos"></canvas>
           </div>
         </div>
       </div>
 
-      <!-- Gráficos linha 2 -->
+      <!-- Gráficos linha 2: horas + top 10 produtos -->
       <div class="graficos-grid">
         <div class="card grafico-card">
           <div class="grafico-head">
@@ -102,6 +102,29 @@ export async function inicializarDashboard() {
         </div>
       </div>
 
+      <!-- Gráficos linha 3: top pratos + ranking entradas -->
+      <div class="graficos-grid">
+        <div class="card grafico-card">
+          <div class="grafico-head">
+            <h3>🍽️ Top 10 pratos (REFEIÇÕES)</h3>
+            <span class="grafico-sub" id="sub-pratos"></span>
+          </div>
+          <div class="grafico-wrap" style="height:340px">
+            <canvas id="chart-pratos"></canvas>
+          </div>
+        </div>
+
+        <div class="card grafico-card">
+          <div class="grafico-head">
+            <h3>🥗 Ranking vendedor × entradas</h3>
+            <span class="grafico-sub" id="sub-entradas"></span>
+          </div>
+          <div class="grafico-wrap" style="height:340px">
+            <canvas id="chart-entradas"></canvas>
+          </div>
+        </div>
+      </div>
+
       <!-- Ranking de vendedores -->
       <div class="card">
         <div class="grafico-head">
@@ -111,13 +134,47 @@ export async function inicializarDashboard() {
         <div id="ranking-vendedores"></div>
       </div>
 
-      <!-- Operadores separados -->
-      <div class="card" id="card-operadores">
+      <!-- Explorador de dados (filtros avançados) -->
+      <div class="card" id="card-explorador">
         <div class="grafico-head">
-          <h3>🖥️ Operadores (caixa/balcão)</h3>
-          <span class="grafico-sub">Vendas em nome do caixa, sem vendedor atribuído</span>
+          <h3>🔎 Explorador de dados</h3>
+          <span class="grafico-sub">Filtre por data, vendedor, grupo ou produto</span>
         </div>
-        <div id="info-operadores"></div>
+
+        <div class="explorador-filtros">
+          <div class="filtro-group">
+            <label>Dimensão</label>
+            <select id="expl-dimensao">
+              <option value="vendedor">Por vendedor</option>
+              <option value="grupo">Por grupo</option>
+              <option value="subgrupo">Por subgrupo</option>
+              <option value="produto">Por produto</option>
+              <option value="hora">Por hora</option>
+              <option value="dia">Por dia</option>
+            </select>
+          </div>
+          <div class="filtro-group">
+            <label>Filtrar vendedor</label>
+            <select id="expl-vendedor">
+              <option value="">Todos</option>
+            </select>
+          </div>
+          <div class="filtro-group">
+            <label>Filtrar grupo</label>
+            <select id="expl-grupo">
+              <option value="">Todos</option>
+            </select>
+          </div>
+          <div class="filtro-group">
+            <label>Filtrar produto</label>
+            <select id="expl-produto">
+              <option value="">Todos</option>
+            </select>
+          </div>
+          <button class="btn btn-ghost btn-sm" id="btn-expl-limpar">Limpar</button>
+        </div>
+
+        <div id="explorador-resultado"></div>
       </div>
     </div>
 
@@ -214,7 +271,7 @@ function renderizarDashboard(vendas) {
     Object.values(chartsAtivos).forEach(c => c?.destroy?.());
     chartsAtivos = {};
     document.getElementById('ranking-vendedores').innerHTML = '<p class="text-muted text-center" style="padding:20px">Sem dados.</p>';
-    document.getElementById('info-operadores').innerHTML = '<p class="text-muted text-center" style="padding:20px">Sem dados.</p>';
+    document.getElementById('explorador-resultado').innerHTML = '<p class="text-muted text-center" style="padding:20px">Sem dados.</p>';
     return;
   }
 
@@ -223,8 +280,10 @@ function renderizarDashboard(vendas) {
   renderGraficoGrupos(vendas);
   renderGraficoHoras(vendas);
   renderGraficoProdutos(vendas);
+  renderGraficoPratos(vendas);
+  renderGraficoEntradas(vendas);
   renderRankingVendedores(vendas);
-  renderOperadores(vendas);
+  renderExplorador(vendas);
 }
 
 // ===== KPIs =====
@@ -326,18 +385,40 @@ function renderGraficoDiario(vendas) {
   document.getElementById('sub-diario').textContent = `média: ${fmtMoeda(media)}`;
 }
 
-// ===== GRÁFICO: GRUPOS =====
+// ===== GRÁFICO: MIX POR SUBGRUPO (top 8 + Outros) =====
 function renderGraficoGrupos(vendas) {
   chartsAtivos.grupos?.destroy?.();
   const soma = {};
   vendas.forEach(v => {
-    (v.grupos || []).forEach(g => {
-      soma[g.nome] = (soma[g.nome] || 0) + (g.total || 0);
+    (v.subgrupos || []).forEach(s => {
+      soma[s.nome] = (soma[s.nome] || 0) + (s.total || 0);
     });
   });
+  // Fallback se não tiver subgrupos (dados antigos): usa grupos
+  if (Object.keys(soma).length === 0) {
+    vendas.forEach(v => {
+      (v.grupos || []).forEach(g => {
+        soma[g.nome] = (soma[g.nome] || 0) + (g.total || 0);
+      });
+    });
+  }
+
   const entries = Object.entries(soma).sort((a,b) => b[1] - a[1]);
-  const labels = entries.map(e => e[0]);
-  const valores = entries.map(e => e[1]);
+  // Top 8 + "Outros" agregando o resto
+  let top = entries.slice(0, 8);
+  const resto = entries.slice(8);
+  if (resto.length > 0) {
+    const somaResto = resto.reduce((s, e) => s + e[1], 0);
+    top.push([`Outros (${resto.length})`, somaResto]);
+  }
+  const labels = top.map(e => e[0]);
+  const valores = top.map(e => e[1]);
+
+  // Paleta estendida pra 9 fatias
+  const paletaExpandida = [
+    '#7C0047', '#FAB900', '#1e6641', '#1a5276', '#b5451b',
+    '#a13376', '#4a9d71', '#fcd04d', '#6b6761'
+  ];
 
   const ctx = document.getElementById('chart-grupos');
   if (!ctx) return;
@@ -348,7 +429,7 @@ function renderGraficoGrupos(vendas) {
       labels,
       datasets: [{
         data: valores,
-        backgroundColor: cores.paleta,
+        backgroundColor: paletaExpandida.slice(0, labels.length),
         borderWidth: 2,
         borderColor: '#fff'
       }]
@@ -359,7 +440,26 @@ function renderGraficoGrupos(vendas) {
       plugins: {
         legend: {
           position: 'bottom',
-          labels: { boxWidth: 12, padding: 10, font: { size: 11 } }
+          labels: {
+            boxWidth: 10,
+            padding: 8,
+            font: { size: 10 },
+            generateLabels: function(chart) {
+              const data = chart.data;
+              if (!data.labels.length) return [];
+              const total = data.datasets[0].data.reduce((s,v) => s+v, 0);
+              return data.labels.map((label, i) => {
+                const v = data.datasets[0].data[i];
+                const pct = ((v / total) * 100).toFixed(1);
+                const nomeCurto = label.length > 18 ? label.slice(0, 16) + '…' : label;
+                return {
+                  text: `${nomeCurto} (${pct}%)`,
+                  fillStyle: data.datasets[0].backgroundColor[i],
+                  index: i
+                };
+              });
+            }
+          }
         },
         tooltip: {
           callbacks: {
@@ -374,7 +474,7 @@ function renderGraficoGrupos(vendas) {
     }
   });
 
-  document.getElementById('sub-grupos').textContent = `${labels.length} grupos`;
+  document.getElementById('sub-grupos').textContent = `${entries.length} subgrupos`;
 }
 
 // ===== GRÁFICO: HORAS =====
@@ -555,46 +655,369 @@ function renderRankingVendedores(vendas) {
   document.getElementById('sub-vendedores').textContent = `${ranking.length} vendedores no período`;
 }
 
-// ===== OPERADORES =====
-function renderOperadores(vendas) {
-  const comOperadores = vendas.filter(v => v.operadores);
-  if (!comOperadores.length) {
-    document.getElementById('card-operadores').style.display = 'none';
+// ===== GRÁFICO: TOP 10 PRATOS (grupo REFEIÇÕES) =====
+// Busca produtos que pertencem ao grupo REFEIÇÕES.
+// Como o TXT do PDV não diz explicitamente qual grupo um produto pertence,
+// uso heurística: se o produto NÃO aparece em grupos tipo BEBIDAS/DIVERSOS
+// e está entre os produtos do dia, consideramos refeição.
+// Na prática, identifico os produtos de refeições cruzando com os subgrupos
+// que claramente não são bebidas.
+function renderGraficoPratos(vendas) {
+  chartsAtivos.pratos?.destroy?.();
+
+  // Subgrupos que NÃO são refeições (bebidas e afins) — esses serão excluídos
+  const naoRefeicao = new Set([
+    'CERVEJAS', 'REFRIGERANTES E SUCOS', 'CAFE ESPRESSO', 'DOSES', 'DRINKS',
+    'DIVERSOS', 'SOBREMESAS', 'SORVETES'
+  ]);
+
+  // Mapa produto → subgrupo (preenchemos heurística abaixo)
+  // Como o TXT lista SUBGRUPO e PRODUTO separadamente, sem dizer qual produto
+  // pertence a qual subgrupo, uso uma regra: se o produto tem palavras de
+  // comida (PEIXADA, FILE, COSTELINHA, PASTEL, etc), é refeição.
+  const palavrasRefeicao = [
+    'PEIXADA', 'MOJICA', 'VENTRECHA', 'PINTADO', 'TAMBATINGA', 'MOQUECA',
+    'FILE', 'COMBINADO', 'KIDS', 'PARMEGIANA', 'PETISCO', 'PASTEL', 'BOLINHO',
+    'CALDO', 'BATATA FRITA', 'FRANGO', 'PICADINHO', 'PALITO', 'COSTELINHA',
+    'INDIVIDUAL', 'MIX', 'PIRAO'
+  ];
+
+  const soma = {};
+  vendas.forEach(v => {
+    (v.produtos || []).forEach(p => {
+      const nomeUp = p.nome.toUpperCase();
+      const ehRefeicao = palavrasRefeicao.some(palavra => nomeUp.includes(palavra));
+      if (ehRefeicao) {
+        if (!soma[p.nome]) soma[p.nome] = { qtd: 0, total: 0 };
+        soma[p.nome].qtd   += p.qtd || 0;
+        soma[p.nome].total += p.total || 0;
+      }
+    });
+  });
+
+  const top = Object.entries(soma).sort((a,b) => b[1].qtd - a[1].qtd).slice(0, 10);
+
+  if (!top.length) {
+    document.getElementById('sub-pratos').textContent = 'sem dados de pratos no período';
+    const ctx = document.getElementById('chart-pratos');
+    if (ctx) {
+      const ctx2d = ctx.getContext('2d');
+      ctx2d.clearRect(0, 0, ctx.width, ctx.height);
+    }
     return;
   }
 
-  let totalOp = 0, qtdOp = 0;
-  comOperadores.forEach(v => {
-    totalOp += v.operadores.total || 0;
-    qtdOp   += v.operadores.qtd || 0;
+  const labels = top.map(e => e[0].length > 28 ? e[0].slice(0,26) + '…' : e[0]);
+  const qtds   = top.map(e => e[1].qtd);
+  const valores = top.map(e => e[1].total);
+
+  const ctx = document.getElementById('chart-pratos');
+  if (!ctx) return;
+
+  chartsAtivos.pratos = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Unidades vendidas',
+        data: qtds,
+        backgroundColor: cores.amarelo,
+        borderColor: cores.vinho,
+        borderWidth: 1,
+        borderRadius: 6,
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const i = ctx.dataIndex;
+              return `${fmtInt(qtds[i])} unidades · ${fmtMoeda(valores[i])}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          beginAtZero: true,
+          ticks: {
+            callback: v => fmtInt(v) + ' un',
+            precision: 0
+          }
+        }
+      }
+    }
   });
-  const ticketOp = qtdOp ? totalOp / qtdOp : 0;
 
-  // Calcula percentual do total geral
-  const totalGeral = vendas.reduce((s,v) => s + (v.totais?.total || 0), 0);
-  const pctOp = totalGeral ? (totalOp / totalGeral) * 100 : 0;
+  const totalPratos = qtds.reduce((s,v) => s+v, 0);
+  document.getElementById('sub-pratos').textContent = `${Object.keys(soma).length} pratos · ${fmtInt(totalPratos)} unid. no top 10`;
+}
 
-  document.getElementById('card-operadores').style.display = 'block';
-  document.getElementById('info-operadores').innerHTML = `
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;padding:10px 0">
-      <div>
-        <div class="kpi-label">Faturamento OPERADORES</div>
-        <div class="kpi-value" style="font-size:20px;color:var(--vinho)">${fmtMoeda(totalOp)}</div>
-      </div>
-      <div>
-        <div class="kpi-label">Itens vendidos</div>
-        <div class="kpi-value" style="font-size:20px">${fmtInt(qtdOp)}</div>
-      </div>
-      <div>
-        <div class="kpi-label">Ticket médio</div>
-        <div class="kpi-value" style="font-size:20px">${fmtMoeda(ticketOp)}</div>
-      </div>
-      <div>
-        <div class="kpi-label">% do faturamento</div>
-        <div class="kpi-value" style="font-size:20px">${pctOp.toFixed(1)}%</div>
-      </div>
+// ===== GRÁFICO: RANKING VENDEDOR × ENTRADAS =====
+// Mostra quantas entradas cada vendedor vendeu (do subgrupo ENTRADAS).
+// Como o TXT não associa diretamente produto→vendedor, usamos proxy:
+// calculamos o % que ENTRADAS representa do faturamento total do dia,
+// e aplicamos a mesma proporção ao faturamento de cada vendedor.
+// Não é perfeito mas é a melhor aproximação possível com os dados disponíveis.
+//
+// Alternativa: se um dia o PDV fornecer "vendedor × produto", usamos isso direto.
+function renderGraficoEntradas(vendas) {
+  chartsAtivos.entradas?.destroy?.();
+
+  // Calcula para cada dia: unidades totais de ENTRADAS / total de itens
+  // E soma por vendedor usando essa proporção
+  const somaVend = {};
+
+  vendas.forEach(v => {
+    // Acha o subgrupo ENTRADAS do dia
+    const entradasDia = (v.subgrupos || []).find(s =>
+      s.nome.toUpperCase() === 'ENTRADAS'
+    );
+    if (!entradasDia) return;
+
+    const totalItensDia = v.totais?.qtd || 0;
+    if (!totalItensDia) return;
+
+    const proporcao = entradasDia.qtd / totalItensDia;
+
+    // Aplica a proporção sobre os itens de cada vendedor
+    (v.vendedores || []).forEach(vd => {
+      const entradasEstimadas = (vd.qtd || 0) * proporcao;
+      const valorEstimado = (vd.total || 0) * (entradasDia.total / (v.totais?.total || 1));
+      if (!somaVend[vd.nome]) somaVend[vd.nome] = { qtd: 0, total: 0 };
+      somaVend[vd.nome].qtd   += entradasEstimadas;
+      somaVend[vd.nome].total += valorEstimado;
+    });
+  });
+
+  const entries = Object.entries(somaVend)
+    .filter(e => e[1].qtd > 0)
+    .sort((a,b) => b[1].qtd - a[1].qtd)
+    .slice(0, 10);
+
+  if (!entries.length) {
+    document.getElementById('sub-entradas').textContent = 'sem dados de entradas no período';
+    const ctx = document.getElementById('chart-entradas');
+    if (ctx) {
+      const ctx2d = ctx.getContext('2d');
+      ctx2d.clearRect(0, 0, ctx.width, ctx.height);
+    }
+    return;
+  }
+
+  const labels = entries.map(e => firstName(e[0]));
+  const qtds   = entries.map(e => Math.round(e[1].qtd));
+  const valores = entries.map(e => e[1].total);
+
+  const ctx = document.getElementById('chart-entradas');
+  if (!ctx) return;
+
+  chartsAtivos.entradas = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Entradas (estimado)',
+        data: qtds,
+        backgroundColor: cores.verde,
+        borderRadius: 6,
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: ctx => entries[ctx[0].dataIndex][0],
+            label: ctx => {
+              const i = ctx.dataIndex;
+              return `~${fmtInt(qtds[i])} entradas · ${fmtMoeda(valores[i])} (estimado)`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          beginAtZero: true,
+          ticks: {
+            callback: v => fmtInt(v),
+            precision: 0
+          }
+        }
+      }
+    }
+  });
+
+  document.getElementById('sub-entradas').textContent = `valores estimados por proporção`;
+}
+
+// ===== EXPLORADOR DE DADOS =====
+let vendasExploradorAtual = [];
+
+function renderExplorador(vendas) {
+  vendasExploradorAtual = vendas;
+
+  // Popula dropdowns de filtro
+  const vendedores = new Set();
+  const grupos = new Set();
+  const produtos = new Set();
+  vendas.forEach(v => {
+    (v.vendedores || []).forEach(vd => vendedores.add(vd.nome));
+    (v.grupos || []).forEach(g => grupos.add(g.nome));
+    (v.produtos || []).forEach(p => produtos.add(p.nome));
+  });
+
+  popularDropdown('expl-vendedor', vendedores, 'Todos');
+  popularDropdown('expl-grupo', grupos, 'Todos');
+  popularDropdown('expl-produto', produtos, 'Todos');
+
+  // Listeners
+  ['expl-dimensao', 'expl-vendedor', 'expl-grupo', 'expl-produto'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.onchange = atualizarExplorador;
+  });
+
+  const btnLimpar = document.getElementById('btn-expl-limpar');
+  if (btnLimpar) {
+    btnLimpar.onclick = () => {
+      document.getElementById('expl-vendedor').value = '';
+      document.getElementById('expl-grupo').value = '';
+      document.getElementById('expl-produto').value = '';
+      atualizarExplorador();
+    };
+  }
+
+  atualizarExplorador();
+}
+
+function popularDropdown(id, items, todosLabel) {
+  const sel = document.getElementById(id);
+  if (!sel) return;
+  const arr = [...items].sort((a,b) => a.localeCompare(b, 'pt-BR'));
+  sel.innerHTML = `<option value="">${todosLabel}</option>` +
+    arr.map(x => `<option value="${x}">${x}</option>`).join('');
+}
+
+function atualizarExplorador() {
+  const vendas = vendasExploradorAtual;
+  const dimensao = document.getElementById('expl-dimensao').value;
+  const fVend    = document.getElementById('expl-vendedor').value;
+  const fGrupo   = document.getElementById('expl-grupo').value;
+  const fProduto = document.getElementById('expl-produto').value;
+
+  const resultado = document.getElementById('explorador-resultado');
+
+  // Agrupa conforme a dimensão escolhida, aplicando os filtros
+  const buckets = {}; // { chave: { qtd, total, dias: Set } }
+
+  vendas.forEach(v => {
+    const dataDia = v.id;
+
+    // Se tem filtro de vendedor, pega só a parte desse vendedor do dia
+    // Senão, usa os totais do dia
+    let fonte;
+
+    if (dimensao === 'vendedor' || fVend) {
+      fonte = (v.vendedores || []).filter(vd => !fVend || vd.nome === fVend);
+    } else if (dimensao === 'grupo' || fGrupo) {
+      fonte = (v.grupos || []).filter(g => !fGrupo || g.nome === fGrupo);
+    } else if (dimensao === 'subgrupo') {
+      fonte = v.subgrupos || [];
+    } else if (dimensao === 'produto' || fProduto) {
+      fonte = (v.produtos || []).filter(p => !fProduto || p.nome === fProduto);
+    } else if (dimensao === 'hora') {
+      fonte = (v.horas || []).map(h => ({ ...h, nome: h.faixa }));
+    } else if (dimensao === 'dia') {
+      fonte = [{ nome: dataDia, qtd: v.totais?.qtd || 0, total: v.totais?.total || 0 }];
+    } else {
+      fonte = [{ nome: dataDia, qtd: v.totais?.qtd || 0, total: v.totais?.total || 0 }];
+    }
+
+    fonte.forEach(item => {
+      let chave;
+      if (dimensao === 'vendedor')       chave = item.nome;
+      else if (dimensao === 'grupo')     chave = item.nome;
+      else if (dimensao === 'subgrupo')  chave = item.nome;
+      else if (dimensao === 'produto')   chave = item.nome;
+      else if (dimensao === 'hora')      chave = item.nome;
+      else if (dimensao === 'dia')       chave = fmtData(dataDia);
+      else chave = item.nome;
+
+      if (!buckets[chave]) buckets[chave] = { qtd: 0, total: 0, dias: new Set() };
+      buckets[chave].qtd   += item.qtd || 0;
+      buckets[chave].total += item.total || 0;
+      buckets[chave].dias.add(dataDia);
+    });
+  });
+
+  const ordenado = Object.entries(buckets)
+    .map(([k, v]) => ({ chave: k, qtd: v.qtd, total: v.total, dias: v.dias.size }))
+    .sort((a, b) => {
+      // Para hora e dia, ordena por chave (tempo)
+      if (dimensao === 'hora' || dimensao === 'dia') {
+        return a.chave.localeCompare(b.chave);
+      }
+      return b.total - a.total;
+    });
+
+  if (!ordenado.length) {
+    resultado.innerHTML = '<p class="text-muted text-center" style="padding:20px">Sem dados para os filtros selecionados.</p>';
+    return;
+  }
+
+  // Maior total pra barra de progresso
+  const maior = Math.max(...ordenado.map(r => r.total));
+  const totalGeral = ordenado.reduce((s, r) => s + r.total, 0);
+  const qtdTotal = ordenado.reduce((s, r) => s + r.qtd, 0);
+
+  // Renderiza como tabela
+  resultado.innerHTML = `
+    <div class="expl-resumo">
+      <div><span class="expl-resumo-label">Registros:</span> <strong>${ordenado.length}</strong></div>
+      <div><span class="expl-resumo-label">Total:</span> <strong>${fmtMoeda(totalGeral)}</strong></div>
+      <div><span class="expl-resumo-label">Unidades:</span> <strong>${fmtInt(qtdTotal)}</strong></div>
     </div>
+    <div class="expl-tabela">
+      <div class="expl-linha expl-cabecalho">
+        <div class="expl-chave">${dimensaoLabel(dimensao)}</div>
+        <div class="expl-unidades">Unidades</div>
+        <div class="expl-valor">Faturamento</div>
+      </div>
+      ${ordenado.slice(0, 30).map(r => {
+        const pct = maior ? (r.total / maior) * 100 : 0;
+        return `
+          <div class="expl-linha">
+            <div class="expl-chave">${r.chave}</div>
+            <div class="expl-unidades">${fmtInt(r.qtd)}</div>
+            <div class="expl-valor">
+              ${fmtMoeda(r.total)}
+              <div class="expl-barra"><div class="expl-barra-fill" style="width:${pct}%"></div></div>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+    ${ordenado.length > 30 ? `<p class="text-muted text-center" style="padding:10px;font-size:11px">Mostrando top 30 de ${ordenado.length} registros. Use filtros pra refinar.</p>` : ''}
   `;
+}
+
+function dimensaoLabel(d) {
+  return {
+    vendedor: 'Vendedor',
+    grupo: 'Grupo',
+    subgrupo: 'Subgrupo',
+    produto: 'Produto',
+    hora: 'Faixa de hora',
+    dia: 'Dia'
+  }[d] || d;
 }
 
 // ===== UTILS =====

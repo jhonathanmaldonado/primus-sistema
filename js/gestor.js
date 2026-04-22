@@ -2,7 +2,7 @@
 // Painel do gestor: navegação entre módulos.
 
 import { exigirPerfil, logout, listarUsuarios } from './auth.js';
-import { listarContagens } from './db.js';
+import { listarContagens, excluirContagem } from './db.js';
 import { BEBIDAS, SORVETES, slugify } from './produtos.js';
 import { inicializarDashboard, recarregarDashboard } from './dashboard.js';
 import { inicializarVendas } from './vendas.js';
@@ -166,11 +166,45 @@ function renderizarContagens() {
             </div>
           </div>
         </div>
-        <button class="btn btn-ghost btn-ver" onclick="verDetalheContagem('${c.id}')" style="width:100%;margin-top:10px">
-          Ver detalhes →
-        </button>
+        <div class="contagem-acoes">
+          <button class="btn btn-ghost btn-ver" onclick="verDetalheContagem('${c.id}')" style="flex:1">
+            Ver detalhes →
+          </button>
+          <button class="btn btn-danger btn-sm" onclick="excluirContagemConf('${c.id}')" title="Excluir contagem">
+            🗑️
+          </button>
+        </div>
       </div>`;
   }).join('');
+}
+
+window.excluirContagemConf = async function(id) {
+  const c = contagensCache.find(x => x.id === id);
+  if (!c) return;
+  const tipoLabel = { ini: 'Bebidas Início', fin: 'Bebidas Final', sorv: 'Sorvetes' };
+  const msg = `Excluir a contagem de ${tipoLabel[c.tipo]} de ${formatarDataPtBr(c.data)} feita por ${c.autorNome}?\n\n⚠️ Essa ação é permanente e não pode ser desfeita.`;
+  if (!confirm(msg)) return;
+  // Confirmação dupla
+  if (!confirm('Tem certeza absoluta? Os dados vão ser apagados para sempre.')) return;
+
+  try {
+    await excluirContagem(id);
+    mostrarToastGlobal(`Contagem excluída.`, 'ok');
+    // Remove do cache local e re-renderiza
+    contagensCache = contagensCache.filter(x => x.id !== id);
+    renderizarContagens();
+  } catch (e) {
+    console.error(e);
+    mostrarToastGlobal('Erro ao excluir: ' + e.message, 'err');
+  }
+};
+
+function mostrarToastGlobal(msg, tipo = '') {
+  const t = document.getElementById('toast');
+  if (!t) return;
+  t.textContent = msg;
+  t.className = 'toast show ' + tipo;
+  setTimeout(() => t.className = 'toast', 2800);
 }
 
 window.verDetalheContagem = function(id) {
