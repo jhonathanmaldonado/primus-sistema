@@ -35,38 +35,46 @@ export async function salvarContagem(contagem) {
 
 /**
  * Lista contagens com filtros opcionais.
+ * NOTA: busca todos os documentos e filtra/ordena em JS para evitar
+ * necessidade de índices compostos. Em volume normal (até ~5000 contagens),
+ * isso é perfeitamente aceitável.
  */
-export async function listarContagens({ tipo, dataInicio, dataFim, limite = 100 } = {}) {
-  let q = collection(db, COL_CONTAGENS);
-  const filtros = [];
-  if (tipo)       filtros.push(where('tipo', '==', tipo));
-  if (dataInicio) filtros.push(where('data', '>=', dataInicio));
-  if (dataFim)    filtros.push(where('data', '<=', dataFim));
-  // Monta query
-  q = filtros.length
-    ? query(collection(db, COL_CONTAGENS), ...filtros, orderBy('data', 'desc'), limit(limite))
-    : query(collection(db, COL_CONTAGENS), orderBy('data', 'desc'), limit(limite));
-  const snap = await getDocs(q);
+export async function listarContagens({ tipo, dataInicio, dataFim, limite = 500 } = {}) {
+  const snap = await getDocs(collection(db, COL_CONTAGENS));
   const arr = [];
   snap.forEach(d => arr.push({ id: d.id, ...d.data() }));
-  return arr;
+  // Ordena por data (desc) e depois por criadoEm (desc)
+  arr.sort((a, b) => {
+    if (a.data !== b.data) return b.data.localeCompare(a.data);
+    // Se mesma data, o mais recente (criadoEm) primeiro
+    const aMs = a.criadoEm?.toMillis?.() || 0;
+    const bMs = b.criadoEm?.toMillis?.() || 0;
+    return bMs - aMs;
+  });
+  // Aplica filtros em JS
+  let filtrado = arr;
+  if (tipo)       filtrado = filtrado.filter(c => c.tipo === tipo);
+  if (dataInicio) filtrado = filtrado.filter(c => c.data >= dataInicio);
+  if (dataFim)    filtrado = filtrado.filter(c => c.data <= dataFim);
+  return filtrado.slice(0, limite);
 }
 
 /**
  * Busca a contagem mais recente de um tipo e data (pra usar de "última contagem").
  */
 export async function ultimaContagem({ tipo, data }) {
-  const q = query(
-    collection(db, COL_CONTAGENS),
-    where('tipo', '==', tipo),
-    where('data', '==', data),
-    orderBy('criadoEm', 'desc'),
-    limit(1)
-  );
-  const snap = await getDocs(q);
-  if (snap.empty) return null;
-  const d = snap.docs[0];
-  return { id: d.id, ...d.data() };
+  // Busca todas e filtra em JS para evitar precisar de índice composto
+  const snap = await getDocs(collection(db, COL_CONTAGENS));
+  const arr = [];
+  snap.forEach(d => {
+    const dt = d.data();
+    if (dt.tipo === tipo && dt.data === data) {
+      arr.push({ id: d.id, ...dt });
+    }
+  });
+  if (!arr.length) return null;
+  arr.sort((a, b) => (b.criadoEm?.toMillis?.() || 0) - (a.criadoEm?.toMillis?.() || 0));
+  return arr[0];
 }
 
 export async function excluirContagem(id) {
@@ -96,27 +104,32 @@ export async function buscarVendasDia(dia) {
 /**
  * Lista vendas ordenadas por data (mais recente primeiro).
  * Pode filtrar por período.
+ * NOTA: busca todos os documentos e filtra/ordena em JS para evitar
+ * necessidade de índices compostos no Firestore. Como cada doc é um dia,
+ * em 1 ano são no máximo ~365 docs — perfeitamente aceitável.
  */
-export async function listarVendas({ dataInicio, dataFim, limite = 60 } = {}) {
-  const filtros = [];
-  if (dataInicio) filtros.push(where('__name__', '>=', dataInicio));
-  if (dataFim)    filtros.push(where('__name__', '<=', dataFim));
-  const q = filtros.length
-    ? query(collection(db, COL_VENDAS), ...filtros, orderBy('__name__', 'desc'), limit(limite))
-    : query(collection(db, COL_VENDAS), orderBy('__name__', 'desc'), limit(limite));
-  const snap = await getDocs(q);
+export async function listarVendas({ dataInicio, dataFim, limite = 365 } = {}) {
+  const snap = await getDocs(collection(db, COL_VENDAS));
   const arr = [];
   snap.forEach(d => arr.push({ id: d.id, ...d.data() }));
-  return arr;
+  // Ordena por ID (que é a data YYYY-MM-DD), mais recente primeiro
+  arr.sort((a, b) => b.id.localeCompare(a.id));
+  // Filtra período se especificado
+  let filtrado = arr;
+  if (dataInicio) filtrado = filtrado.filter(v => v.id >= dataInicio);
+  if (dataFim)    filtrado = filtrado.filter(v => v.id <= dataFim);
+  // Aplica limite
+  return filtrado.slice(0, limite);
 }
 
 /**
  * Lista apenas os IDs (datas) de vendas já importadas - útil pra detectar duplicatas.
  */
 export async function listarDatasVendas() {
-  const snap = await getDocs(query(collection(db, COL_VENDAS), orderBy('__name__', 'desc'), limit(365)));
+  const snap = await getDocs(collection(db, COL_VENDAS));
   const arr = [];
   snap.forEach(d => arr.push(d.id));
+  arr.sort((a, b) => b.localeCompare(a));
   return arr;
 }
 

@@ -23,14 +23,34 @@ export async function inicializarVendas() {
     <div class="card">
       <div class="grafico-head">
         <h3>📤 Importar TXT do PDV</h3>
-        <span class="grafico-sub">Suba o arquivo de relatório do dia</span>
+        <span class="grafico-sub">Suba o arquivo ou cole o conteúdo</span>
       </div>
 
-      <div class="upload-zone" id="upload-zone">
-        <input type="file" id="upload-file" accept=".txt">
-        <div class="upload-icon">📄</div>
-        <div class="upload-title">Clique ou arraste o TXT do PDV aqui</div>
-        <div class="upload-hint">Formato esperado: relatório de vendas com seções TURNO, VENDEDOR, PRODUTO, DIA…</div>
+      <div class="upload-tabs">
+        <button class="upload-tab active" data-tab="arquivo">📁 Arquivo</button>
+        <button class="upload-tab" data-tab="texto">📋 Colar texto</button>
+      </div>
+
+      <div class="upload-tab-content active" data-tab="arquivo">
+        <div class="upload-zone" id="upload-zone">
+          <input type="file" id="upload-file" accept=".txt">
+          <div class="upload-icon">📄</div>
+          <div class="upload-title">Clique ou arraste o TXT do PDV aqui</div>
+          <div class="upload-hint">Formato esperado: relatório de vendas com seções TURNO, VENDEDOR, PRODUTO, DIA…</div>
+        </div>
+      </div>
+
+      <div class="upload-tab-content" data-tab="texto">
+        <textarea
+          id="upload-texto"
+          class="upload-textarea"
+          placeholder="Cole aqui o conteúdo completo do relatório do PDV (Ctrl+V)..."
+          rows="8"
+        ></textarea>
+        <div class="upload-acoes-texto">
+          <span class="upload-hint" id="upload-texto-hint">0 linhas</span>
+          <button class="btn btn-primary" id="btn-processar-texto">📊 Processar texto</button>
+        </div>
       </div>
 
       <div id="preview-area" style="display:none"></div>
@@ -47,8 +67,51 @@ export async function inicializarVendas() {
     </div>
   `;
 
+  setupTabs();
   setupUpload();
+  setupColarTexto();
   await carregarListaImportados();
+}
+
+// ===== TABS =====
+function setupTabs() {
+  document.querySelectorAll('.upload-tab').forEach(tab => {
+    tab.onclick = () => {
+      const alvo = tab.dataset.tab;
+      document.querySelectorAll('.upload-tab').forEach(t => t.classList.toggle('active', t === tab));
+      document.querySelectorAll('.upload-tab-content').forEach(c => {
+        c.classList.toggle('active', c.dataset.tab === alvo);
+      });
+      // Limpa prévia ao trocar de aba
+      cancelarUpload();
+    };
+  });
+}
+
+// ===== COLAR TEXTO =====
+function setupColarTexto() {
+  const textarea = document.getElementById('upload-texto');
+  const hint = document.getElementById('upload-texto-hint');
+  const btn = document.getElementById('btn-processar-texto');
+
+  textarea.addEventListener('input', () => {
+    const linhas = textarea.value.split('\n').filter(l => l.trim()).length;
+    hint.textContent = `${linhas} ${linhas === 1 ? 'linha' : 'linhas'}`;
+    btn.disabled = linhas < 5;
+  });
+
+  btn.disabled = true;
+  btn.onclick = () => {
+    const texto = textarea.value;
+    if (!texto.trim()) {
+      mostrarToast('Cole o conteúdo do relatório primeiro.', 'err');
+      return;
+    }
+    // Tenta detectar um "nome" virtual pro arquivo a partir do conteúdo
+    const hoje = new Date();
+    const nomeVirtual = `texto-colado-${hoje.toISOString().slice(0, 10)}.txt`;
+    processarTexto(texto, nomeVirtual);
+  };
 }
 
 // ===== SETUP UPLOAD =====
@@ -87,31 +150,39 @@ async function processarArquivo(file) {
     return;
   }
 
-  const preview = document.getElementById('preview-area');
-  preview.style.display = 'block';
-  preview.innerHTML = `<div style="text-align:center;padding:30px"><span class="spinner"></span> Lendo arquivo...</div>`;
-
   try {
     // Detecta encoding: tenta UTF-8 primeiro, se der caractere quebrado usa ISO-8859-1 (comum em PDVs antigos)
     let texto = await file.text();
     if (/[\uFFFD\u0080-\u009F]/.test(texto)) {
-      // Tem caracteres de substituição - provavelmente é latin-1
       const buf = await file.arrayBuffer();
       texto = new TextDecoder('iso-8859-1').decode(buf);
     }
+    processarTexto(texto, file.name);
+  } catch (e) {
+    console.error(e);
+    mostrarToast('Erro ao ler arquivo: ' + e.message, 'err');
+  }
+}
 
+// ===== PROCESSAR TEXTO (core - funciona pra arquivo ou texto colado) =====
+function processarTexto(texto, nomeVirtual = 'texto-colado.txt') {
+  const preview = document.getElementById('preview-area');
+  preview.style.display = 'block';
+  preview.innerHTML = `<div style="text-align:center;padding:30px"><span class="spinner"></span> Processando...</div>`;
+
+  try {
     const parsed = parsePdvTxt(texto);
     const resumo = resumirParse(parsed);
 
     if (!parsed.data) {
       preview.innerHTML = `
         <div class="preview-err">
-          ⚠️ Não foi possível detectar a data do relatório. Verifique se o arquivo é um TXT válido do PDV.
+          ⚠️ Não foi possível detectar a data do relatório. Verifique se o texto está completo e no formato correto.
         </div>`;
       return;
     }
 
-    arquivoPendente = { nome: file.name, parsed, resumo };
+    arquivoPendente = { nome: nomeVirtual, parsed, resumo };
 
     const jaExiste = datasImportadas.includes(parsed.data);
     const aviso = jaExiste ? `
@@ -123,7 +194,7 @@ async function processarArquivo(file) {
       <div class="preview-header">
         <span class="preview-icon">✅</span>
         <div>
-          <div class="preview-titulo">Arquivo lido: ${file.name}</div>
+          <div class="preview-titulo">Texto processado: ${nomeVirtual}</div>
           <div class="preview-sub">Data detectada: <strong>${fmtData(parsed.data)}</strong></div>
         </div>
       </div>
@@ -172,15 +243,25 @@ async function processarArquivo(file) {
     console.error(e);
     preview.innerHTML = `
       <div class="preview-err">
-        ⚠️ Erro ao processar o arquivo: ${e.message}
+        ⚠️ Erro ao processar: ${e.message}
       </div>`;
   }
 }
 
 function cancelarUpload() {
   arquivoPendente = null;
-  document.getElementById('preview-area').style.display = 'none';
-  document.getElementById('upload-file').value = '';
+  const preview = document.getElementById('preview-area');
+  if (preview) preview.style.display = 'none';
+  const fileInput = document.getElementById('upload-file');
+  if (fileInput) fileInput.value = '';
+  const textarea = document.getElementById('upload-texto');
+  if (textarea) {
+    textarea.value = '';
+    const hint = document.getElementById('upload-texto-hint');
+    if (hint) hint.textContent = '0 linhas';
+    const btn = document.getElementById('btn-processar-texto');
+    if (btn) btn.disabled = true;
+  }
 }
 
 async function confirmarUpload() {
