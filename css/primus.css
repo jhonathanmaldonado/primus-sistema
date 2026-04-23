@@ -2660,3 +2660,71 @@ body {
     gap: 8px;
   }
 }
+
+/* ========================================================================
+   HISTÓRICO — LEGENDA DOS STATUS
+   ======================================================================== */
+
+.hist-legenda {
+  background: white;
+  border: 1px solid var(--cinza-borda);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+.hist-legenda-titulo {
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--cinza-texto);
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+.hist-legenda-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+.hist-legenda-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.hist-legenda-bolinha {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  border-radius: 50%;
+  margin-top: 2px;
+  flex-shrink: 0;
+  border: 1.5px solid;
+}
+.hist-legenda-bolinha.hist-s-c { background: var(--vermelho); border-color: var(--vermelho); }
+.hist-legenda-bolinha.hist-s-a { background: var(--amarelo-status); border-color: var(--amarelo-status); }
+.hist-legenda-bolinha.hist-s-l { background: #b07420; border-color: #b07420; }
+.hist-legenda-bolinha.hist-s-o { background: var(--verde-status); border-color: var(--verde-status); }
+.hist-legenda-item strong {
+  display: block;
+  font-family: 'Raleway', sans-serif;
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--preto);
+  line-height: 1.2;
+}
+.hist-legenda-item small {
+  display: block;
+  font-size: 10px;
+  color: var(--cinza-texto);
+  margin-top: 2px;
+  line-height: 1.3;
+}
+
+/* Ajuste no hist-meta pra acomodar o botão */
+.hist-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
