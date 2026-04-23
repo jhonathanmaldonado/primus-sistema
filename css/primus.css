@@ -2356,3 +2356,62 @@ body {
 }
 .aud-linha-com-diag { align-items: start; }
 .aud-linha-com-diag .aud-num { padding-top: 4px; }
+
+/* ========================================================================
+   AUDITORIA — BOTÃO EXPORTAR E MODAL
+   ======================================================================== */
+
+.aud-acoes {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 0 4px;
+  margin-top: 14px;
+  border-top: 1.5px solid var(--cinza-borda);
+  flex-wrap: wrap;
+}
+
+.aud-pdf-opt {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px;
+  background: white;
+  border: 2px solid var(--cinza-borda);
+  border-radius: 10px;
+  cursor: pointer;
+  margin-bottom: 10px;
+  transition: all 0.15s;
+}
+.aud-pdf-opt:has(input:checked) {
+  border-color: var(--vinho);
+  background: #faf3f6;
+}
+.aud-pdf-opt input[type="radio"] {
+  margin-top: 2px;
+  accent-color: var(--vinho);
+  flex-shrink: 0;
+}
+.aud-pdf-opt strong {
+  display: block;
+  font-family: 'Raleway', sans-serif;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--preto);
+  margin-bottom: 2px;
+}
+.aud-pdf-opt small {
+  display: block;
+  font-size: 11px;
+  color: var(--cinza-texto);
+  line-height: 1.3;
+}
+
+.aud-pdf-botoes {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--cinza-borda);
+}
