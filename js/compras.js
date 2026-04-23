@@ -4,7 +4,11 @@
 // - Consumo médio dos últimos 14 dias (vendas do PDV)
 // - Configuração: cobertura de 7 dias
 
-import { listarContagens, listarVendas, listarFornecedores, salvarFornecedores } from './db.js';
+import {
+  listarContagens, listarVendas,
+  listarFornecedores, salvarFornecedores,
+  buscarUltimosPrecos, salvarPrecosCompra
+} from './db.js';
 import {
   BEBIDAS, slugify, FORNECEDORES_PADRAO,
   converterParaCaixas, arredondarParaCaixaCheia
@@ -20,6 +24,8 @@ const ALERTA_ATENCAO_DIAS = 4;    // < 4 dias = atenção (amarelo)
 let fornecedoresCache = [];
 let sugestaoCache = [];           // produtos com cálculo pronto
 let quantidadesAjustadas = {};    // slug → quantidade editada pelo usuário
+let ultimosPrecos = {};           // slug → { valor, data, fornecedor }
+let precosDigitados = {};         // slug → preço unit digitado agora
 
 const fmtMoeda = v => 'R$ ' + (v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtInt   = v => Math.round(v || 0).toLocaleString('pt-BR');
@@ -137,11 +143,15 @@ async function carregarECalcular() {
       fornecedoresCache = await criarFornecedoresPadrao();
     }
 
-    // 4) Calcula sugestão
+    // 4) Busca o último preço pago de cada produto (histórico)
+    ultimosPrecos = await buscarUltimosPrecos();
+
+    // 5) Calcula sugestão
     sugestaoCache = calcularSugestao(ultimaContagem, vendas);
 
-    // 5) Renderiza
+    // 6) Renderiza
     quantidadesAjustadas = {};  // reset ao recalcular
+    precosDigitados = {};        // reset de preços ao recalcular
     renderizar(ultimaContagem, vendas.length);
 
     loading.style.display = 'none';
@@ -340,14 +350,17 @@ function renderizar(contagemUsada, totalDiasVendas) {
   // Ações no rodapé
   rodape.innerHTML = `
     <div class="compras-rodape">
-      <button class="btn btn-ghost" id="btn-exportar-pdf">📄 Exportar PDF por fornecedor</button>
-      <button class="btn btn-primary" id="btn-salvar-lista">💾 Salvar lista</button>
+      <div class="compras-total-geral" id="compras-total-geral"></div>
+      <div class="compras-rodape-acoes">
+        <button class="btn btn-ghost" id="btn-exportar-pdf">📄 Exportar PDF</button>
+        <button class="btn btn-primary" id="btn-salvar-compra">💾 Salvar compra</button>
+      </div>
     </div>
   `;
   rodape.style.display = 'block';
 
   document.getElementById('btn-exportar-pdf').onclick = exportarPDF;
-  document.getElementById('btn-salvar-lista').onclick = salvarLista;
+  document.getElementById('btn-salvar-compra').onclick = salvarCompra;
 
   // Listeners nos inputs de qtd editável
   document.querySelectorAll('.compra-qtd-input').forEach(inp => {
@@ -364,6 +377,18 @@ function renderizar(contagemUsada, totalDiasVendas) {
         convEl.textContent = v > 0 ? converterParaCaixas(v, produtoInfo) : '';
       }
 
+      atualizarTotaisRodape();
+    });
+  });
+
+  // Listeners nos inputs de preço unitário (aceita 12,50 ou 12.50)
+  document.querySelectorAll('.compra-preco-input').forEach(inp => {
+    inp.addEventListener('input', e => {
+      const slug = e.target.dataset.slug;
+      const raw = e.target.value.replace(/[^\d,.]/g, '');
+      // Converte "12,50" → 12.50; "12.5" fica 12.5
+      const v = parseFloat(raw.replace(',', '.')) || 0;
+      precosDigitados[slug] = v;
       atualizarTotaisRodape();
     });
   });
@@ -432,6 +457,7 @@ function renderGrupoFornecedor(g) {
           <div>Cobertura</div>
           <div>Sugerido</div>
           <div>Comprar</div>
+          <div>R$ Unit.</div>
         </div>
         ${g.itens.map(i => renderLinhaProduto(i)).join('')}
       </div>
@@ -457,6 +483,15 @@ function renderLinhaProduto(i) {
   const convSugerido = i.sugerido > 0 ? converterParaCaixas(i.sugerido, produtoInfo) : '';
   const convAtual    = qtdAtual > 0   ? converterParaCaixas(qtdAtual,   produtoInfo) : '';
 
+  // Último preço pago (referência histórica)
+  const ultimoPreco = ultimosPrecos[i.slug];
+  const ultimoPrecoTxt = ultimoPreco?.valor
+    ? `<div class="compra-ultimo-preco" title="Pago em ${fmtData(ultimoPreco.data)}">último: ${fmtMoeda(ultimoPreco.valor)}</div>`
+    : `<div class="compra-ultimo-preco compra-ultimo-vazio">sem histórico</div>`;
+
+  // Preço digitado agora (se já digitou nessa sessão)
+  const precoAtual = precosDigitados[i.slug] ?? '';
+
   return `
     <div class="compras-linha ${i.status}">
       <div class="compra-nome">
@@ -475,12 +510,17 @@ function renderLinhaProduto(i) {
           data-slug="${i.slug}" value="${qtdAtual}">
         <div class="compra-conv compra-conv-final" data-slug-conv="${i.slug}">${convAtual}</div>
       </div>
+      <div class="compra-preco">
+        <input type="text" class="compra-preco-input" inputmode="decimal"
+          data-slug="${i.slug}" value="${precoAtual}" placeholder="${ultimoPreco?.valor ? ultimoPreco.valor.toFixed(2).replace('.', ',') : '0,00'}">
+        ${ultimoPrecoTxt}
+      </div>
     </div>
   `;
 }
 
 function atualizarTotaisRodape() {
-  // Atualiza o "qtd a comprar" por grupo sem re-renderizar tudo
+  // Atualiza "qtd a comprar" por grupo
   const grupos = document.querySelectorAll('.compras-grupo');
   grupos.forEach(g => {
     const inputs = g.querySelectorAll('.compra-qtd-input');
@@ -488,13 +528,119 @@ function atualizarTotaisRodape() {
     const meta = g.querySelector('.compras-grupo-meta');
     if (meta) meta.textContent = `${qtdItens} item(ns) a comprar`;
   });
+
+  // Calcula total geral em R$ (soma qtd × preco)
+  let totalGeral = 0;
+  let itensComPreco = 0;
+  let itensAComprar = 0;
+  sugestaoCache.forEach(i => {
+    const qtd = quantidadesAjustadas[i.slug] ?? i.sugerido;
+    if (qtd > 0) {
+      itensAComprar++;
+      const preco = precosDigitados[i.slug] || 0;
+      if (preco > 0) {
+        totalGeral += qtd * preco;
+        itensComPreco++;
+      }
+    }
+  });
+
+  const totalEl = document.getElementById('compras-total-geral');
+  if (totalEl) {
+    if (itensComPreco > 0) {
+      const pct = Math.round((itensComPreco / itensAComprar) * 100);
+      totalEl.innerHTML = `
+        <div class="total-label">Total preenchido (${itensComPreco}/${itensAComprar} · ${pct}%)</div>
+        <div class="total-valor">${fmtMoeda(totalGeral)}</div>
+      `;
+      totalEl.style.display = 'block';
+    } else {
+      totalEl.style.display = 'none';
+    }
+  }
 }
 
 // ===== AÇÕES =====
 
-async function salvarLista() {
-  mostrarToast('Lista salva! (em produção, salva no Firestore)', 'ok');
-  // TODO: salvar lista com snapshot em primus_compras/YYYY-MM-DD
+async function salvarCompra() {
+  // Coleta todos os itens com preço digitado E qtd > 0
+  const itensComPreco = [];
+  sugestaoCache.forEach(i => {
+    const qtd = quantidadesAjustadas[i.slug] ?? i.sugerido;
+    const preco = precosDigitados[i.slug] || 0;
+    if (qtd > 0 && preco > 0) {
+      itensComPreco.push({
+        slug: i.slug,
+        nome: i.nome,
+        qtd,
+        precoUnit: preco
+      });
+    }
+  });
+
+  if (itensComPreco.length === 0) {
+    mostrarToast('Preencha pelo menos 1 preço pra salvar.', 'err');
+    return;
+  }
+
+  const btn = document.getElementById('btn-salvar-compra');
+  const txtOriginal = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Salvando...';
+
+  try {
+    // Agrupa por fornecedor (pra passar info de fornecedor no metadado)
+    // Como cada item pode ter fornecedor diferente, salvamos um bulk
+    const gravados = await salvarPrecosCompra(itensComPreco, '');
+    mostrarToast(`${gravados} preço(s) salvos no histórico! 💰`, 'ok');
+
+    // Recarrega últimos preços pra mostrar na tela
+    ultimosPrecos = await buscarUltimosPrecos();
+
+    // Re-renderiza a lista pra mostrar "último pago" atualizado
+    const agrupado = agruparPorFornecedor(sugestaoCache, fornecedoresCache);
+    const lista = document.getElementById('compras-lista');
+    lista.innerHTML = agrupado.map(g => renderGrupoFornecedor(g)).join('');
+
+    // Re-anexa listeners (porque re-renderizou)
+    reatacharListeners();
+
+    btn.innerHTML = '✓ Salvo!';
+    setTimeout(() => { btn.innerHTML = txtOriginal; btn.disabled = false; }, 2000);
+  } catch (e) {
+    console.error(e);
+    mostrarToast('Erro ao salvar: ' + e.message, 'err');
+    btn.innerHTML = txtOriginal;
+    btn.disabled = false;
+  }
+}
+
+// Re-anexa listeners nos inputs após re-render (chamado por salvarCompra)
+function reatacharListeners() {
+  document.querySelectorAll('.compra-qtd-input').forEach(inp => {
+    inp.addEventListener('input', e => {
+      const slug = e.target.dataset.slug;
+      const v = parseInt(e.target.value, 10) || 0;
+      quantidadesAjustadas[slug] = v;
+      const item = sugestaoCache.find(x => x.slug === slug);
+      const convEl = document.querySelector(`[data-slug-conv="${slug}"]`);
+      if (item && convEl) {
+        const produtoInfo = { unidCompra: item.unidCompra, porCaixa: item.porCaixa };
+        convEl.textContent = v > 0 ? converterParaCaixas(v, produtoInfo) : '';
+      }
+      atualizarTotaisRodape();
+    });
+  });
+
+  document.querySelectorAll('.compra-preco-input').forEach(inp => {
+    inp.addEventListener('input', e => {
+      const slug = e.target.dataset.slug;
+      const raw = e.target.value.replace(/[^\d,.]/g, '');
+      const v = parseFloat(raw.replace(',', '.')) || 0;
+      precosDigitados[slug] = v;
+      atualizarTotaisRodape();
+    });
+  });
 }
 
 function exportarPDF() {
@@ -538,14 +684,14 @@ function exportarPDF() {
   const marginL = 12;
   const marginR = 198;
 
-  // Colunas: Produto | Qtd | Un | Conv | R$ unit. | R$ total
-  // Larguras (da esquerda pra direita)
+  // Colunas: Produto | Qtd | Un | Conv | Último R$ | R$ unit. | R$ total
   const colX = {
     produto: marginL + 2,
-    qtd:     115,
-    un:      126,
-    conv:    142,
-    unit:    168,
+    qtd:     105,
+    un:      115,
+    conv:    129,
+    ultimo:  158,
+    unit:    178,
     total:   marginR - 2
   };
 
@@ -560,6 +706,7 @@ function exportarPDF() {
     doc.text('QTD',       colX.qtd,      yPos, { align: 'right' });
     doc.text('UN',        colX.un,       yPos, { align: 'right' });
     doc.text('CAIXA/FARDO', colX.conv,   yPos);
+    doc.text('ÚLT. R$',   colX.ultimo,   yPos, { align: 'right' });
     doc.text('R$ UNIT.',  colX.unit,     yPos, { align: 'right' });
     doc.text('R$ TOTAL',  colX.total,    yPos, { align: 'right' });
     doc.setTextColor(0);
@@ -620,23 +767,34 @@ function exportarPDF() {
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(0);
       // Nome (cortado se for muito longo)
-      const nomeCurto = i.nome.length > 40 ? i.nome.slice(0, 38) + '…' : i.nome;
+      const nomeCurto = i.nome.length > 36 ? i.nome.slice(0, 34) + '…' : i.nome;
       doc.text(nomeCurto, colX.produto, y);
 
       doc.text(String(qtd), colX.qtd, y, { align: 'right' });
       doc.setTextColor(120);
       doc.text('un', colX.un, y, { align: 'right' });
       doc.text(conv, colX.conv, y);
+
+      // Último preço pago (referência histórica) - cinza pra destacar que é só referência
+      const ultimoPreco = ultimosPrecos[i.slug];
+      if (ultimoPreco?.valor) {
+        doc.setTextColor(100);
+        doc.setFont('helvetica', 'italic');
+        doc.text(fmtMoeda(ultimoPreco.valor), colX.ultimo, y, { align: 'right' });
+        doc.setFont('helvetica', 'normal');
+      } else {
+        doc.setTextColor(180);
+        doc.text('—', colX.ultimo, y, { align: 'right' });
+      }
       doc.setTextColor(0);
 
       // Linhas de preenchimento pra R$ unit. e R$ total
-      // (campos em branco com linha tracejada pra escrever)
       doc.setDrawColor(180);
       doc.setLineWidth(0.2);
       // R$ unit. - linha tracejada
-      doc.line(colX.unit - 18, y + 0.8, colX.unit, y + 0.8);
+      doc.line(colX.unit - 15, y + 0.8, colX.unit, y + 0.8);
       // R$ total - linha tracejada
-      doc.line(colX.total - 18, y + 0.8, colX.total, y + 0.8);
+      doc.line(colX.total - 15, y + 0.8, colX.total, y + 0.8);
 
       // Linha horizontal separadora (muito sutil)
       doc.setDrawColor(230);
@@ -655,14 +813,14 @@ function exportarPDF() {
     doc.setTextColor(80);
     doc.text(`${subtotalItens} ${subtotalItens === 1 ? 'item' : 'itens'}`, colX.produto, y + 1);
     doc.setTextColor(124, 0, 71);
-    doc.text(`Subtotal: ${subtotalUnidades} un`, colX.qtd + 25, y + 1, { align: 'right' });
+    doc.text(`Subtotal: ${subtotalUnidades} un`, colX.qtd + 15, y + 1, { align: 'right' });
     // Espaço pra preencher total do fornecedor em R$
     doc.setTextColor(80);
     doc.setFont('helvetica', 'normal');
-    doc.text('R$', colX.unit - 22, y + 1);
+    doc.text('R$', colX.unit - 18, y + 1);
     doc.setDrawColor(124, 0, 71);
     doc.setLineWidth(0.5);
-    doc.line(colX.unit - 18, y + 1.5, colX.total, y + 1.5);
+    doc.line(colX.unit - 15, y + 1.5, colX.total, y + 1.5);
 
     totalGeralUnidades += subtotalUnidades;
     totalGeralItens += subtotalItens;
@@ -679,13 +837,13 @@ function exportarPDF() {
   doc.text('TOTAL GERAL', colX.produto, y + 6.5);
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  doc.text(`${totalGeralItens} itens · ${totalGeralUnidades} unidades`, colX.qtd + 25, y + 6.5, { align: 'right' });
+  doc.text(`${totalGeralItens} itens · ${totalGeralUnidades} unidades`, colX.qtd + 15, y + 6.5, { align: 'right' });
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
-  doc.text('R$', colX.unit - 22, y + 6.5);
+  doc.text('R$', colX.unit - 18, y + 6.5);
   doc.setDrawColor(250, 185, 0);  // amarelo
   doc.setLineWidth(0.6);
-  doc.line(colX.unit - 18, y + 7.5, colX.total, y + 7.5);
+  doc.line(colX.unit - 15, y + 7.5, colX.total, y + 7.5);
   y += 14;
 
   // ========== LEGENDA/DATA ==========

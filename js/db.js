@@ -188,6 +188,53 @@ export async function salvarFornecedores(lista) {
   });
 }
 
+// ===== HISTÓRICO DE PREÇOS =====
+// Armazenado em primus_compras com ID fixo 'precos' (um único documento)
+// Estrutura: { precos: { slug1: { valor, data, fornecedor }, slug2: {...} } }
+// Guardamos apenas o ÚLTIMO preço de cada produto (mais recente sobrescreve).
+
+const DOC_PRECOS = 'precos';
+
+/** Busca o último preço pago de cada produto. Retorna objeto { slug: { valor, data, fornecedor } } */
+export async function buscarUltimosPrecos() {
+  const snap = await getDoc(doc(db, COL_COMPRAS, DOC_PRECOS));
+  if (!snap.exists()) return {};
+  return snap.data().precos || {};
+}
+
+/**
+ * Salva os preços pagos numa compra. Sobrescreve o último preço de cada item.
+ * @param {array} itens - [{ slug, nome, qtd, precoUnit }]
+ * @param {string} fornecedor - nome do fornecedor (opcional, usado como metadado)
+ */
+export async function salvarPrecosCompra(itens, fornecedor = '') {
+  const ref = doc(db, COL_COMPRAS, DOC_PRECOS);
+  const atual = await getDoc(ref);
+  const precos = atual.exists() ? (atual.data().precos || {}) : {};
+
+  const hoje = new Date().toISOString().slice(0, 10);
+  let gravados = 0;
+
+  itens.forEach(i => {
+    if (!i.precoUnit || i.precoUnit <= 0) return;
+    precos[i.slug] = {
+      valor: i.precoUnit,
+      data: hoje,
+      fornecedor: fornecedor || ''
+    };
+    gravados++;
+  });
+
+  if (gravados === 0) return 0;
+
+  await setDoc(ref, {
+    precos,
+    atualizadoEm: serverTimestamp()
+  });
+
+  return gravados;
+}
+
 // ===== UTIL =====
 
 /** Converte YYYY-MM-DD para objeto Date (local, não UTC) */
