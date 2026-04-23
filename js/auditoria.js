@@ -413,8 +413,13 @@ async function executarAuditoria() {
       await executarModoVirada();
     }
 
-    // Verifica se essa auditoria já foi fechada antes
-    auditoriaFechadaAtual = await buscarAuditoriaFechada(modoAtual, dataInicio, dataFim);
+    // Verifica se essa auditoria já foi fechada antes (tolerante a falha)
+    try {
+      auditoriaFechadaAtual = await buscarAuditoriaFechada(modoAtual, dataInicio, dataFim);
+    } catch (errFechada) {
+      console.warn('Não foi possível verificar auditoria fechada (pode ser regra Firestore ausente):', errFechada.message);
+      auditoriaFechadaAtual = null;
+    }
     renderizarBannerFechamento();
 
     loading.style.display = 'none';
