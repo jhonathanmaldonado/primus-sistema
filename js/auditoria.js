@@ -17,6 +17,7 @@ let modoAtual = 'operacional';   // 'operacional' | 'virada'
 let dataInicio = '';
 let dataFim    = '';
 let resultadoAuditoria = [];
+let contextoAuditoria = {};      // { contagemIni, contagemFin, vendas, recebimentos, contagemFinAnterior }
 
 const fmtMoeda = v => 'R$ ' + (v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtInt   = v => Math.round(v || 0).toLocaleString('pt-BR');
@@ -82,6 +83,40 @@ export async function inicializarAuditoria() {
       <div id="aud-erro" style="display:none"></div>
       <div id="aud-resumo" style="display:none"></div>
       <div id="aud-tabela" style="display:none"></div>
+      <div id="aud-acoes" style="display:none" class="aud-acoes">
+        <button class="btn btn-ghost" id="aud-btn-pdf">📄 Exportar PDF</button>
+      </div>
+    </div>
+
+    <!-- Modal de exportação de PDF -->
+    <div class="modal-backdrop" id="aud-modal-pdf">
+      <div class="modal-box" style="max-width:500px">
+        <button class="modal-close" id="aud-modal-pdf-close">✕</button>
+        <div class="modal-head">
+          <h3>📄 Exportar Auditoria em PDF</h3>
+          <p>Escolha o conteúdo do relatório</p>
+        </div>
+        <div style="padding:20px 24px 24px">
+          <label class="aud-pdf-opt">
+            <input type="radio" name="aud-pdf-conteudo" value="todos" checked>
+            <div>
+              <strong>Todos os produtos</strong>
+              <small>Lista completa, inclusive OK. Ideal pra arquivar auditoria do dia.</small>
+            </div>
+          </label>
+          <label class="aud-pdf-opt">
+            <input type="radio" name="aud-pdf-conteudo" value="divergencias">
+            <div>
+              <strong>Só divergências</strong>
+              <small>Só críticos, atenção e leves. Ideal pra resolver problemas.</small>
+            </div>
+          </label>
+          <div class="aud-pdf-botoes">
+            <button class="btn btn-ghost" id="aud-pdf-cancelar">Cancelar</button>
+            <button class="btn btn-primary" id="aud-pdf-confirmar">📄 Gerar PDF</button>
+          </div>
+        </div>
+      </div>
     </div>
   `;
 
@@ -98,6 +133,15 @@ export async function inicializarAuditoria() {
 
   document.getElementById('aud-executar').onclick = executarAuditoria;
 
+  // Listeners do modal de PDF
+  document.getElementById('aud-btn-pdf').onclick = abrirModalPDF;
+  document.getElementById('aud-modal-pdf-close').onclick = fecharModalPDF;
+  document.getElementById('aud-pdf-cancelar').onclick = fecharModalPDF;
+  document.getElementById('aud-pdf-confirmar').onclick = gerarPDF;
+  document.getElementById('aud-modal-pdf').onclick = e => {
+    if (e.target.id === 'aud-modal-pdf') fecharModalPDF();
+  };
+
   // Aplica modo inicial
   aplicarModo();
 }
@@ -111,6 +155,7 @@ function trocarModo(novoModo) {
   document.getElementById('aud-resumo').style.display = 'none';
   document.getElementById('aud-tabela').style.display = 'none';
   document.getElementById('aud-erro').style.display = 'none';
+  document.getElementById('aud-acoes').style.display = 'none';
 }
 
 function aplicarModo() {
@@ -225,11 +270,13 @@ async function executarAuditoria() {
   const erro    = document.getElementById('aud-erro');
   const resumo  = document.getElementById('aud-resumo');
   const tabela  = document.getElementById('aud-tabela');
+  const acoes   = document.getElementById('aud-acoes');
 
   loading.style.display = 'block';
   erro.style.display    = 'none';
   resumo.style.display  = 'none';
   tabela.style.display  = 'none';
+  acoes.style.display   = 'none';
 
   try {
     if (modoAtual === 'operacional') {
@@ -240,6 +287,7 @@ async function executarAuditoria() {
     loading.style.display = 'none';
     resumo.style.display  = 'block';
     tabela.style.display  = 'block';
+    acoes.style.display   = 'flex';
   } catch (e) {
     console.error(e);
     mostrarErro('Erro: ' + e.message);
@@ -288,6 +336,9 @@ async function executarModoOperacional() {
   // 5) Calcula auditoria (agora com D-1 e diagnóstico)
   resultadoAuditoria = calcularAuditoriaOperacional(contagemIni, contagemFin, vendas, recebimentos, contagemFinAnterior);
 
+  // Salva contexto pro PDF usar depois
+  contextoAuditoria = { contagemIni, contagemFin, vendas, recebimentos, contagemFinAnterior };
+
   // 6) Renderiza
   renderizarResumoOperacional(contagemIni, contagemFin, vendas, recebimentos, contagemFinAnterior);
   renderizarTabelaOperacional();
@@ -314,6 +365,9 @@ async function executarModoVirada() {
 
   // 2) Calcula auditoria de virada
   resultadoAuditoria = calcularAuditoriaVirada(contagemFinAnterior, contagemIniAtual);
+
+  // Salva contexto pro PDF usar depois
+  contextoAuditoria = { contagemFinAnterior, contagemIniAtual };
 
   // 3) Renderiza (layout específico do modo virada)
   renderizarResumoVirada(contagemFinAnterior, contagemIniAtual);
@@ -830,6 +884,555 @@ function renderLinhaVirada(r) {
       <div>${statusBadge}</div>
     </div>
   `;
+}
+
+// ========================================================================
+// EXPORTAÇÃO PDF
+// ========================================================================
+
+function abrirModalPDF() {
+  document.getElementById('aud-modal-pdf').classList.add('open');
+}
+function fecharModalPDF() {
+  document.getElementById('aud-modal-pdf').classList.remove('open');
+}
+
+function gerarPDF() {
+  if (typeof window.jspdf === 'undefined') {
+    alert('jsPDF não carregado.');
+    return;
+  }
+  const conteudo = document.querySelector('input[name="aud-pdf-conteudo"]:checked')?.value || 'todos';
+
+  // Filtra produtos conforme a escolha
+  let itens = [...resultadoAuditoria];
+  if (conteudo === 'divergencias') {
+    itens = itens.filter(r => r.status === 'critico' || r.status === 'atencao' || r.status === 'leve');
+  }
+
+  if (itens.length === 0) {
+    alert('Nenhum produto para exportar nesse filtro.');
+    return;
+  }
+
+  if (modoAtual === 'operacional') {
+    gerarPDFOperacional(itens, conteudo);
+  } else {
+    gerarPDFVirada(itens, conteudo);
+  }
+
+  fecharModalPDF();
+}
+
+// ===== PDF MODO OPERACIONAL =====
+function gerarPDFOperacional(itens, conteudo) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const { contagemIni, contagemFin, vendas, recebimentos, contagemFinAnterior } = contextoAuditoria;
+  const hoje = fmtData(toIso(new Date()));
+
+  const margL = 12;
+  const margR = 198;
+
+  // ========== CABEÇALHO ==========
+  doc.setFillColor(124, 0, 71);
+  doc.rect(0, 0, 210, 22, 'F');
+  doc.setTextColor(255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text('PRIMUS PEIXARIA', margL + 2, 10);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Auditoria de Estoque — Dia operacional', margL + 2, 16);
+  doc.setFontSize(8);
+  doc.text(`Gerado em ${hoje}`, margR - 2, 16, { align: 'right' });
+
+  // ========== PERÍODO E INFO ==========
+  let y = 30;
+  doc.setTextColor(0);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  const periodoLbl = dataInicio === dataFim
+    ? `Data: ${fmtData(dataInicio)}`
+    : `Período: ${fmtData(dataInicio)} → ${fmtData(dataFim)}`;
+  doc.text(periodoLbl, margL, y);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(90);
+  const infoConteudo = conteudo === 'divergencias' ? 'Só divergências' : 'Todos os produtos';
+  doc.text(`${infoConteudo} · ${itens.length} ${itens.length === 1 ? 'item' : 'itens'}`, margR, y, { align: 'right' });
+  doc.setTextColor(0);
+  y += 8;
+
+  // ========== EQUAÇÃO DE TOTAIS ==========
+  const totalIni = resultadoAuditoria.reduce((s, r) => s + r.ini, 0);
+  const totalRec = resultadoAuditoria.reduce((s, r) => s + r.recebido, 0);
+  const totalVen = resultadoAuditoria.reduce((s, r) => s + r.vendido, 0);
+  const totalFin = resultadoAuditoria.reduce((s, r) => s + r.real, 0);
+  const totalDif = resultadoAuditoria.reduce((s, r) => s + r.diferenca, 0);
+
+  // Bloco cinza com a equação
+  doc.setFillColor(245, 243, 240);
+  doc.rect(margL, y, margR - margL, 14, 'F');
+
+  // Posições das caixas
+  const bWidth = (margR - margL) / 5 - 4;
+  const positions = [
+    { lbl: 'INICIAL',   val: fmtInt(totalIni), x: margL + 2 },
+    { lbl: '+ RECEB',   val: fmtInt(totalRec), x: margL + bWidth * 1 + 8 },
+    { lbl: '- VENDIDO', val: fmtInt(totalVen), x: margL + bWidth * 2 + 12 },
+    { lbl: '= ESPER.',  val: fmtInt(totalIni + totalRec - totalVen), x: margL + bWidth * 3 + 16 },
+    { lbl: 'REAL',      val: fmtInt(totalFin), x: margL + bWidth * 4 + 20 },
+  ];
+  positions.forEach(p => {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(120);
+    doc.text(p.lbl, p.x, y + 4);
+    doc.setFontSize(12);
+    doc.setTextColor(0);
+    doc.text(p.val, p.x, y + 11);
+  });
+
+  // Diferença no canto direito (destaque)
+  const corDif = totalDif < 0 ? [181, 69, 27] : totalDif > 0 ? [240, 165, 0] : [46, 125, 50];
+  doc.setFillColor(...corDif);
+  doc.rect(margR - 30, y, 30, 14, 'F');
+  doc.setTextColor(255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7);
+  doc.text('DIFERENÇA', margR - 15, y + 4, { align: 'center' });
+  doc.setFontSize(14);
+  doc.text(fmtSgn(totalDif), margR - 15, y + 11, { align: 'center' });
+  doc.setTextColor(0);
+  y += 18;
+
+  // ========== KPIs DE STATUS ==========
+  const criticos = resultadoAuditoria.filter(r => r.status === 'critico').length;
+  const atencao  = resultadoAuditoria.filter(r => r.status === 'atencao').length;
+  const leves    = resultadoAuditoria.filter(r => r.status === 'leve').length;
+  const ok       = resultadoAuditoria.filter(r => r.status === 'ok').length;
+
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Status: ${criticos} críticos · ${atencao} atenção · ${leves} leves · ${ok} OK`, margL, y);
+
+  // Diagnóstico resumido (se houver FIN anterior)
+  if (contagemFinAnterior) {
+    const diagErro = resultadoAuditoria.filter(r => r.diagnostico === 'erro_contagem').length;
+    const diagRec  = resultadoAuditoria.filter(r => r.diagnostico === 'recorrente').length;
+    const diagIso  = resultadoAuditoria.filter(r => r.diagnostico === 'isolado').length;
+    if (diagErro + diagRec + diagIso > 0) {
+      y += 5;
+      doc.setTextColor(90);
+      const partes = [];
+      if (diagErro > 0) partes.push(`${diagErro} provável erro de contagem`);
+      if (diagRec  > 0) partes.push(`${diagRec} recorrente`);
+      if (diagIso  > 0) partes.push(`${diagIso} isolado`);
+      doc.text(`Análise D-1 (vs FIN ${fmtData(contagemFinAnterior.data)}): ${partes.join(' · ')}`, margL, y);
+      doc.setTextColor(0);
+    }
+  }
+  y += 8;
+
+  // ========== TABELA DE PRODUTOS ==========
+  // Colunas
+  const colX = {
+    produto: margL + 2,
+    ini:     98,
+    rec:     112,
+    ven:     126,
+    esp:     140,
+    real:    154,
+    dif:     170,
+    status:  margR - 2
+  };
+
+  function desenharCabecalho(yPos) {
+    doc.setFillColor(30, 30, 30);
+    doc.rect(margL, yPos - 4, margR - margL, 6, 'F');
+    doc.setTextColor(255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.text('PRODUTO', colX.produto, yPos);
+    doc.text('INI',    colX.ini,    yPos, { align: 'right' });
+    doc.text('+REC',   colX.rec,    yPos, { align: 'right' });
+    doc.text('-VEN',   colX.ven,    yPos, { align: 'right' });
+    doc.text('=ESP',   colX.esp,    yPos, { align: 'right' });
+    doc.text('REAL',   colX.real,   yPos, { align: 'right' });
+    doc.text('DIF',    colX.dif,    yPos, { align: 'right' });
+    doc.text('STATUS', colX.status, yPos, { align: 'right' });
+    doc.setTextColor(0);
+    return yPos + 3;
+  }
+
+  y = desenharCabecalho(y + 4);
+  y += 3;
+
+  // Agrupa por grupo
+  const ordemStatus = { critico: 0, atencao: 1, leve: 2, ok: 3, semdados: 4 };
+  const sorted = [...itens].sort((a, b) => {
+    const ds = ordemStatus[a.status] - ordemStatus[b.status];
+    if (ds !== 0) return ds;
+    return Math.abs(b.diferenca) - Math.abs(a.diferenca);
+  });
+
+  const grupos = {};
+  sorted.forEach(r => {
+    if (!grupos[r.grupo]) grupos[r.grupo] = [];
+    grupos[r.grupo].push(r);
+  });
+
+  Object.entries(grupos).forEach(([grupo, items]) => {
+    // Quebra de página
+    if (y > 260) { doc.addPage(); y = 20; y = desenharCabecalho(y + 4); y += 3; }
+
+    // Cabeçalho do grupo
+    doc.setFillColor(240, 240, 240);
+    doc.rect(margL, y - 3, margR - margL, 5, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(90);
+    const grupoLimpo = grupo.replace(/[^\w\sÀ-ÿ]/g, '').trim().toUpperCase();
+    doc.text(grupoLimpo, colX.produto, y + 0.5);
+    doc.setTextColor(0);
+    y += 5;
+
+    items.forEach(r => {
+      if (y > 275) { doc.addPage(); y = 20; y = desenharCabecalho(y + 4); y += 3; }
+
+      // Linha colorida por status (fundo sutil)
+      if (r.status === 'critico') {
+        doc.setFillColor(252, 241, 237);
+        doc.rect(margL, y - 3.5, margR - margL, 5, 'F');
+      } else if (r.status === 'atencao') {
+        doc.setFillColor(255, 249, 230);
+        doc.rect(margL, y - 3.5, margR - margL, 5, 'F');
+      }
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(0);
+
+      const nomeCurto = r.nome.length > 38 ? r.nome.slice(0, 36) + '…' : r.nome;
+      doc.text(nomeCurto, colX.produto, y);
+
+      doc.text(fmtInt(r.ini),  colX.ini,  y, { align: 'right' });
+      doc.setTextColor(r.recebido > 0 ? 46 : 180, r.recebido > 0 ? 125 : 180, r.recebido > 0 ? 50 : 180);
+      doc.text(r.recebido > 0 ? '+' + fmtInt(r.recebido) : '—', colX.rec,  y, { align: 'right' });
+      doc.setTextColor(r.vendido > 0 ? 176 : 180, r.vendido > 0 ? 116 : 180, r.vendido > 0 ? 32 : 180);
+      doc.text(r.vendido > 0 ? '-' + fmtInt(r.vendido) : '—', colX.ven,  y, { align: 'right' });
+      doc.setTextColor(124, 0, 71);
+      doc.setFont('helvetica', 'bold');
+      doc.text(fmtInt(r.esperado), colX.esp, y, { align: 'right' });
+      doc.setTextColor(0);
+      doc.text(fmtInt(r.real),  colX.real, y, { align: 'right' });
+
+      // Diferença colorida
+      if (r.diferenca < 0) doc.setTextColor(181, 69, 27);
+      else if (r.diferenca > 0) doc.setTextColor(240, 165, 0);
+      else doc.setTextColor(46, 125, 50);
+      doc.text(fmtSgn(r.diferenca), colX.dif, y, { align: 'right' });
+      doc.setTextColor(0);
+
+      // Status
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      const statusMap = {
+        critico: { txt: 'CRÍTICO', cor: [181, 69, 27] },
+        atencao: { txt: 'ATENÇÃO', cor: [176, 116, 32] },
+        leve:    { txt: 'LEVE',    cor: [176, 116, 32] },
+        ok:      { txt: 'OK',      cor: [46, 125, 50] },
+        semdados: { txt: 's/dados', cor: [150, 150, 150] }
+      };
+      const s = statusMap[r.status];
+      doc.setTextColor(...s.cor);
+      doc.text(s.txt, colX.status, y, { align: 'right' });
+      doc.setTextColor(0);
+
+      // Diagnóstico inline (se houver)
+      if (r.diagnostico) {
+        y += 3;
+        const diagTxt = {
+          erro_contagem: `Provavel erro de contagem (D-1 = ${fmtSgn(r.d1)})`,
+          recorrente: `Problema recorrente (D-1 = ${fmtSgn(r.d1)})`,
+          isolado: `Problema isolado (D-1 = 0)`
+        }[r.diagnostico];
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(7);
+        doc.setTextColor(90);
+        doc.text('↳ ' + diagTxt, colX.produto + 4, y);
+        doc.setTextColor(0);
+      }
+
+      y += 5;
+    });
+
+    y += 1;
+  });
+
+  // ========== OBSERVAÇÕES E ASSINATURA ==========
+  if (y > 240) { doc.addPage(); y = 20; }
+  y += 6;
+
+  doc.setDrawColor(180);
+  doc.setLineWidth(0.3);
+  doc.line(margL, y, margR, y);
+  y += 6;
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.text('Observações:', margL, y);
+  y += 4;
+  // Linhas em branco pra escrever
+  for (let i = 0; i < 4; i++) {
+    doc.setDrawColor(200);
+    doc.setLineWidth(0.2);
+    doc.line(margL, y + 3, margR, y + 3);
+    y += 5;
+  }
+
+  y += 4;
+  // Bloco de assinatura
+  doc.setDrawColor(100);
+  doc.setLineWidth(0.3);
+  doc.line(margL, y + 6, margL + 70, y + 6);
+  doc.line(margR - 40, y + 6, margR, y + 6);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(100);
+  doc.text('Responsável pela auditoria', margL, y + 10);
+  doc.text('Data', margR - 40, y + 10);
+
+  // Rodapé
+  doc.setFontSize(7);
+  doc.setFont('helvetica', 'italic');
+  doc.setTextColor(130);
+  doc.text(`Gerado pelo Sistema Primus em ${hoje}`, margL, 290);
+
+  const nomeArq = `auditoria_${dataInicio}_${dataFim}.pdf`;
+  doc.save(nomeArq);
+}
+
+// ===== PDF MODO VIRADA =====
+function gerarPDFVirada(itens, conteudo) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const hoje = fmtData(toIso(new Date()));
+  const margL = 12;
+  const margR = 198;
+
+  // Cabeçalho
+  doc.setFillColor(124, 0, 71);
+  doc.rect(0, 0, 210, 22, 'F');
+  doc.setTextColor(255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text('PRIMUS PEIXARIA', margL + 2, 10);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Auditoria de Estoque — Virada de dia', margL + 2, 16);
+  doc.setFontSize(8);
+  doc.text(`Gerado em ${hoje}`, margR - 2, 16, { align: 'right' });
+
+  let y = 30;
+  doc.setTextColor(0);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  const dias = diffDias(dataInicio, dataFim);
+  doc.text(`FIN ${fmtData(dataInicio)} → INI ${fmtData(dataFim)}`, margL, y);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(90);
+  const labelDias = dias === 1 ? '1 dia de parada' : `${dias} dias de parada (parada semanal)`;
+  const infoConteudo = conteudo === 'divergencias' ? 'Só divergências' : 'Todos os produtos';
+  doc.text(`${labelDias} · ${infoConteudo} · ${itens.length} ${itens.length === 1 ? 'item' : 'itens'}`, margR, y, { align: 'right' });
+  doc.setTextColor(0);
+  y += 8;
+
+  // Equação simplificada
+  const totalFim = resultadoAuditoria.reduce((s, r) => s + r.fimAnterior, 0);
+  const totalIni = resultadoAuditoria.reduce((s, r) => s + r.iniAtual, 0);
+  const totalDif = resultadoAuditoria.reduce((s, r) => s + r.diferenca, 0);
+
+  doc.setFillColor(245, 243, 240);
+  doc.rect(margL, y, margR - margL, 14, 'F');
+
+  const w = (margR - margL - 30) / 2;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7);
+  doc.setTextColor(120);
+  doc.text(`FIN ${fmtData(dataInicio)}`, margL + 4, y + 4);
+  doc.setFontSize(12);
+  doc.setTextColor(0);
+  doc.text(fmtInt(totalFim), margL + 4, y + 11);
+
+  doc.setFontSize(7);
+  doc.setTextColor(120);
+  doc.text(`INI ${fmtData(dataFim)}`, margL + 4 + w, y + 4);
+  doc.setFontSize(12);
+  doc.setTextColor(0);
+  doc.text(fmtInt(totalIni), margL + 4 + w, y + 11);
+
+  const corDif = totalDif < 0 ? [181, 69, 27] : totalDif > 0 ? [240, 165, 0] : [46, 125, 50];
+  doc.setFillColor(...corDif);
+  doc.rect(margR - 30, y, 30, 14, 'F');
+  doc.setTextColor(255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7);
+  doc.text('DIFERENÇA', margR - 15, y + 4, { align: 'center' });
+  doc.setFontSize(14);
+  doc.text(fmtSgn(totalDif), margR - 15, y + 11, { align: 'center' });
+  doc.setTextColor(0);
+  y += 18;
+
+  // Status resumo
+  const criticos = resultadoAuditoria.filter(r => r.status === 'critico').length;
+  const atencao  = resultadoAuditoria.filter(r => r.status === 'atencao').length;
+  const leves    = resultadoAuditoria.filter(r => r.status === 'leve').length;
+  const ok       = resultadoAuditoria.filter(r => r.status === 'ok').length;
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Status: ${criticos} críticos · ${atencao} atenção · ${leves} leves · ${ok} OK`, margL, y);
+  y += 8;
+
+  // Tabela
+  const colX = {
+    produto: margL + 2,
+    fimAnt:  120,
+    iniAt:   148,
+    dif:     170,
+    status:  margR - 2
+  };
+
+  function desenharCabecalho(yPos) {
+    doc.setFillColor(30, 30, 30);
+    doc.rect(margL, yPos - 4, margR - margL, 6, 'F');
+    doc.setTextColor(255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.text('PRODUTO', colX.produto, yPos);
+    doc.text(`FIN ${fmtData(dataInicio)}`, colX.fimAnt, yPos, { align: 'right' });
+    doc.text(`INI ${fmtData(dataFim)}`, colX.iniAt, yPos, { align: 'right' });
+    doc.text('DIF', colX.dif, yPos, { align: 'right' });
+    doc.text('STATUS', colX.status, yPos, { align: 'right' });
+    doc.setTextColor(0);
+    return yPos + 3;
+  }
+
+  y = desenharCabecalho(y + 4);
+  y += 3;
+
+  const ordemStatus = { critico: 0, atencao: 1, leve: 2, ok: 3, semdados: 4 };
+  const sorted = [...itens].sort((a, b) => {
+    const ds = ordemStatus[a.status] - ordemStatus[b.status];
+    if (ds !== 0) return ds;
+    return Math.abs(b.diferenca) - Math.abs(a.diferenca);
+  });
+
+  const grupos = {};
+  sorted.forEach(r => {
+    if (!grupos[r.grupo]) grupos[r.grupo] = [];
+    grupos[r.grupo].push(r);
+  });
+
+  Object.entries(grupos).forEach(([grupo, items]) => {
+    if (y > 260) { doc.addPage(); y = 20; y = desenharCabecalho(y + 4); y += 3; }
+
+    doc.setFillColor(240, 240, 240);
+    doc.rect(margL, y - 3, margR - margL, 5, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(90);
+    const grupoLimpo = grupo.replace(/[^\w\sÀ-ÿ]/g, '').trim().toUpperCase();
+    doc.text(grupoLimpo, colX.produto, y + 0.5);
+    doc.setTextColor(0);
+    y += 5;
+
+    items.forEach(r => {
+      if (y > 275) { doc.addPage(); y = 20; y = desenharCabecalho(y + 4); y += 3; }
+
+      if (r.status === 'critico') {
+        doc.setFillColor(252, 241, 237);
+        doc.rect(margL, y - 3.5, margR - margL, 5, 'F');
+      } else if (r.status === 'atencao') {
+        doc.setFillColor(255, 249, 230);
+        doc.rect(margL, y - 3.5, margR - margL, 5, 'F');
+      }
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(0);
+
+      const nomeCurto = r.nome.length > 40 ? r.nome.slice(0, 38) + '…' : r.nome;
+      doc.text(nomeCurto, colX.produto, y);
+      doc.text(fmtInt(r.fimAnterior), colX.fimAnt, y, { align: 'right' });
+      doc.text(fmtInt(r.iniAtual), colX.iniAt, y, { align: 'right' });
+
+      if (r.diferenca < 0) doc.setTextColor(181, 69, 27);
+      else if (r.diferenca > 0) doc.setTextColor(240, 165, 0);
+      else doc.setTextColor(46, 125, 50);
+      doc.setFont('helvetica', 'bold');
+      doc.text(fmtSgn(r.diferenca), colX.dif, y, { align: 'right' });
+      doc.setTextColor(0);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      const statusMap = {
+        critico: { txt: 'CRÍTICO', cor: [181, 69, 27] },
+        atencao: { txt: 'ATENÇÃO', cor: [176, 116, 32] },
+        leve:    { txt: 'LEVE',    cor: [176, 116, 32] },
+        ok:      { txt: 'OK',      cor: [46, 125, 50] },
+        semdados: { txt: 's/dados', cor: [150, 150, 150] }
+      };
+      const s = statusMap[r.status];
+      doc.setTextColor(...s.cor);
+      doc.text(s.txt, colX.status, y, { align: 'right' });
+      doc.setTextColor(0);
+
+      y += 5;
+    });
+
+    y += 1;
+  });
+
+  // Observações e assinatura
+  if (y > 240) { doc.addPage(); y = 20; }
+  y += 6;
+  doc.setDrawColor(180);
+  doc.setLineWidth(0.3);
+  doc.line(margL, y, margR, y);
+  y += 6;
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.text('Observações:', margL, y);
+  y += 4;
+  for (let i = 0; i < 4; i++) {
+    doc.setDrawColor(200);
+    doc.setLineWidth(0.2);
+    doc.line(margL, y + 3, margR, y + 3);
+    y += 5;
+  }
+
+  y += 4;
+  doc.setDrawColor(100);
+  doc.setLineWidth(0.3);
+  doc.line(margL, y + 6, margL + 70, y + 6);
+  doc.line(margR - 40, y + 6, margR, y + 6);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(100);
+  doc.text('Responsável pela auditoria', margL, y + 10);
+  doc.text('Data', margR - 40, y + 10);
+
+  doc.setFontSize(7);
+  doc.setFont('helvetica', 'italic');
+  doc.setTextColor(130);
+  doc.text(`Gerado pelo Sistema Primus em ${hoje}`, margL, 290);
+
+  const nomeArq = `auditoria_virada_${dataInicio}_${dataFim}.pdf`;
+  doc.save(nomeArq);
 }
 
 // ===== UTILS =====
