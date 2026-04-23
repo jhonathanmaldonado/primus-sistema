@@ -167,6 +167,27 @@ export async function buscarListaCompras(id) {
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 }
 
+// ===== FORNECEDORES =====
+// Armazenados em primus_compras com ID fixo 'fornecedores' (um único documento)
+// contendo um array de { id, nome, telefone?, produtos: [slug1, slug2...] }
+
+const DOC_FORNECEDORES = 'fornecedores';
+
+/** Busca a lista de fornecedores cadastrados. */
+export async function listarFornecedores() {
+  const snap = await getDoc(doc(db, COL_COMPRAS, DOC_FORNECEDORES));
+  if (!snap.exists()) return [];
+  return snap.data().lista || [];
+}
+
+/** Salva a lista completa de fornecedores (sobrescreve). */
+export async function salvarFornecedores(lista) {
+  await setDoc(doc(db, COL_COMPRAS, DOC_FORNECEDORES), {
+    lista,
+    atualizadoEm: serverTimestamp()
+  });
+}
+
 // ===== UTIL =====
 
 /** Converte YYYY-MM-DD para objeto Date (local, não UTC) */

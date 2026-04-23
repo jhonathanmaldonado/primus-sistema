@@ -7,6 +7,7 @@ import { BEBIDAS, SORVETES, slugify } from './produtos.js';
 import { inicializarDashboard, recarregarDashboard } from './dashboard.js';
 import { inicializarVendas } from './vendas.js';
 import { inicializarUsuarios } from './usuarios.js';
+import { inicializarCompras } from './compras.js';
 
 const sessao = exigirPerfil(['gestor']);
 if (!sessao) throw new Error('sem sessão');
@@ -53,6 +54,7 @@ function mostrarView(id) {
   if (id === 'usuarios')  carregarUsuariosTab();
   if (id === 'dashboard') carregarDashboard();
   if (id === 'vendas')    carregarVendas();
+  if (id === 'compras')   carregarComprasTab();
 }
 
 // ===== CARREGADORES DE MÓDULO =====
@@ -60,6 +62,7 @@ function mostrarView(id) {
 let dashboardCarregado = false;
 let vendasCarregado = false;
 let usuariosCarregado = false;
+let comprasCarregado = false;
 
 async function carregarDashboard() {
   if (window._dashboardPrecisaRecarregar) {
@@ -82,6 +85,12 @@ async function carregarUsuariosTab() {
   if (usuariosCarregado) return;
   usuariosCarregado = true;
   await inicializarUsuarios();
+}
+
+async function carregarComprasTab() {
+  if (comprasCarregado) return;
+  comprasCarregado = true;
+  await inicializarCompras();
 }
 
 Object.keys(views).forEach(id => {
