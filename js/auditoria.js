@@ -1833,28 +1833,28 @@ function renderizarDashboardHistorico(auditorias) {
       <div class="hist-legenda-titulo">Entendendo os status:</div>
       <div class="hist-legenda-items">
         <div class="hist-legenda-item">
-          <span class="hist-s hist-s-c">n</span>
+          <span class="hist-legenda-bolinha hist-s-c"></span>
           <div>
             <strong>Críticos</strong>
             <small>Divergência ≥ 5 unidades — investigar urgente</small>
           </div>
         </div>
         <div class="hist-legenda-item">
-          <span class="hist-s hist-s-a">n</span>
+          <span class="hist-legenda-bolinha hist-s-a"></span>
           <div>
             <strong>Atenção</strong>
             <small>Divergência de 2 a 4 unidades — monitorar</small>
           </div>
         </div>
         <div class="hist-legenda-item">
-          <span class="hist-s hist-s-l">n</span>
+          <span class="hist-legenda-bolinha hist-s-l"></span>
           <div>
             <strong>Leves</strong>
             <small>Divergência de 1 unidade — margem aceitável</small>
           </div>
         </div>
         <div class="hist-legenda-item">
-          <span class="hist-s hist-s-o">n</span>
+          <span class="hist-legenda-bolinha hist-s-o"></span>
           <div>
             <strong>OK</strong>
             <small>Sem divergência — tudo batendo</small>
