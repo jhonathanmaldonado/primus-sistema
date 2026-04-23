@@ -297,6 +297,65 @@ export async function excluirRecebimento(id) {
   await deleteDoc(doc(db, COL_COMPRAS, id));
 }
 
+// ===== AUDITORIAS FECHADAS =====
+// Cada auditoria fechada vira um documento em primus_auditorias
+// ID fixo = `${modo}_${dataInicio}_${dataFim}` pra permitir "regravar" a mesma auditoria
+// (se o gestor fechou e depois quer atualizar, sobrescreve)
+
+const COL_AUDITORIAS = 'primus_auditorias';
+
+/**
+ * Salva (ou sobrescreve) uma auditoria fechada.
+ * @param {object} dados - {
+ *   modo: 'operacional'|'virada',
+ *   dataInicio, dataFim,
+ *   resultado: [...],  // array do resultadoAuditoria
+ *   contexto: {...},   // dados brutos (contagens, totais)
+ *   observacoes: string,
+ *   responsavel: string,
+ *   fechadoPor: {id, nome}
+ * }
+ */
+export async function salvarAuditoriaFechada(dados) {
+  const id = `${dados.modo}_${dados.dataInicio}_${dados.dataFim}`;
+  await setDoc(doc(db, COL_AUDITORIAS, id), {
+    ...dados,
+    fechadoEm: serverTimestamp()
+  });
+  return id;
+}
+
+/** Busca uma auditoria fechada específica. Retorna null se não existir. */
+export async function buscarAuditoriaFechada(modo, dataInicio, dataFim) {
+  const id = `${modo}_${dataInicio}_${dataFim}`;
+  const snap = await getDoc(doc(db, COL_AUDITORIAS, id));
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+}
+
+/**
+ * Lista todas as auditorias fechadas (opcional: filtra por modo e/ou período).
+ * Retorna ordenadas por data desc.
+ */
+export async function listarAuditoriasFechadas({ modo = null, dataInicio = null, dataFim = null } = {}) {
+  const snap = await getDocs(collection(db, COL_AUDITORIAS));
+  const resultado = [];
+  snap.forEach(d => {
+    const v = d.data();
+    if (modo && v.modo !== modo) return;
+    if (dataInicio && v.dataFim < dataInicio) return;
+    if (dataFim && v.dataInicio > dataFim) return;
+    resultado.push({ id: d.id, ...v });
+  });
+  // Ordena por dataFim desc (mais recentes primeiro)
+  resultado.sort((a, b) => (b.dataFim || '').localeCompare(a.dataFim || ''));
+  return resultado;
+}
+
+/** Remove uma auditoria fechada (caso queira "reabrir"). */
+export async function excluirAuditoriaFechada(id) {
+  await deleteDoc(doc(db, COL_AUDITORIAS, id));
+}
+
 // ===== UTIL =====
 
 /** Converte YYYY-MM-DD para objeto Date (local, não UTC) */

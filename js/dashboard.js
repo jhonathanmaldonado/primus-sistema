@@ -1326,7 +1326,8 @@ function renderizarExploradorResultado(buckets, dimensao, flags) {
       if (dimensao === 'hora' || dimensao === 'dia') {
         return a.chave.localeCompare(b.chave);
       }
-      return b.total - a.total;
+      // Ranking por UNIDADES (mais intuitivo que por faturamento)
+      return b.qtd - a.qtd;
     });
 
   if (!ordenado.length) {
@@ -1334,7 +1335,8 @@ function renderizarExploradorResultado(buckets, dimensao, flags) {
     return;
   }
 
-  const maior = Math.max(...ordenado.map(r => r.total));
+  // Base das barras e percentual: UNIDADES
+  const maior = Math.max(...ordenado.map(r => r.qtd));
   const totalGeral = ordenado.reduce((s, r) => s + r.total, 0);
   const qtdTotal = ordenado.reduce((s, r) => s + r.qtd, 0);
 
@@ -1373,8 +1375,8 @@ function renderizarExploradorResultado(buckets, dimensao, flags) {
       </thead>
       <tbody>
         ${ordenado.slice(0, 30).map((r, i) => {
-          const pct = maior ? (r.total / maior) * 100 : 0;
-          const pctTotal = totalGeral ? (r.total / totalGeral) * 100 : 0;
+          const pct = maior ? (r.qtd / maior) * 100 : 0;
+          const pctTotal = qtdTotal ? (r.qtd / qtdTotal) * 100 : 0;
           return `
             <tr>
               <td class="expl-td-pos">${i + 1}</td>

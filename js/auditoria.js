@@ -9,16 +9,23 @@
 //   FIN do dia X vs INI do dia Y (próximo dia operacional)
 //   Detecta divergências ENTRE operações (furto, erro de contagem, etc)
 
-import { listarContagens, listarVendas, listarRecebimentos } from './db.js';
+import {
+  listarContagens, listarVendas, listarRecebimentos,
+  salvarAuditoriaFechada, buscarAuditoriaFechada,
+  listarAuditoriasFechadas, excluirAuditoriaFechada
+} from './db.js';
 import { BEBIDAS, slugify, converterParaCaixas } from './produtos.js';
+import { getSessao } from './auth.js';
 
 // ===== ESTADO =====
+let abaAtiva = 'atual';          // 'atual' | 'historico'
 let modoAtual = 'operacional';   // 'operacional' | 'virada'
 let dataInicio = '';
 let dataFim    = '';
 let resultadoAuditoria = [];
 let contextoAuditoria = {};      // { contagemIni, contagemFin, vendas, recebimentos, contagemFinAnterior }
 let logoDataURL = null;          // logo da Primus em base64 (carregada uma vez)
+let auditoriaFechadaAtual = null; // preenchido quando a auditoria do período já está fechada
 
 const fmtMoeda = v => 'R$ ' + (v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtInt   = v => Math.round(v || 0).toLocaleString('pt-BR');
@@ -36,6 +43,20 @@ export async function inicializarAuditoria() {
   const ontemIso = toIso(ontem);
 
   container.innerHTML = `
+    <!-- Sub-abas: Atual vs Histórico -->
+    <div class="subabas-wrapper">
+      <button class="subaba ativo" data-subaba="atual">
+        <span class="subaba-ico">⏱️</span>
+        <span class="subaba-txt">Auditoria Atual</span>
+      </button>
+      <button class="subaba" data-subaba="historico">
+        <span class="subaba-ico">📈</span>
+        <span class="subaba-txt">Histórico</span>
+      </button>
+    </div>
+
+    <!-- Aba: Auditoria Atual -->
+    <div class="subaba-conteudo" id="aud-aba-atual">
     <div class="card">
       <div class="grafico-head">
         <h3>🔍 Auditoria de Estoque</h3>
@@ -76,6 +97,9 @@ export async function inicializarAuditoria() {
 
       <div class="aud-info" id="aud-info"></div>
 
+      <!-- Banner de auditoria já fechada -->
+      <div id="aud-fechada-banner" style="display:none"></div>
+
       <div id="aud-loading" style="display:none;text-align:center;padding:40px">
         <span class="spinner"></span>
         <div style="margin-top:10px;color:var(--cinza-texto);font-size:13px">Executando auditoria...</div>
@@ -86,6 +110,24 @@ export async function inicializarAuditoria() {
       <div id="aud-tabela" style="display:none"></div>
       <div id="aud-acoes" style="display:none" class="aud-acoes">
         <button class="btn btn-ghost" id="aud-btn-pdf">📄 Exportar PDF</button>
+        <button class="btn btn-primary" id="aud-btn-fechar">🔒 Fechar auditoria</button>
+      </div>
+    </div>
+    </div>
+
+    <!-- Aba: Histórico -->
+    <div class="subaba-conteudo" id="aud-aba-historico" style="display:none">
+      <div class="card">
+        <div class="grafico-head">
+          <h3>📈 Histórico e tendências</h3>
+          <span class="grafico-sub" id="hist-sub">Carregando...</span>
+        </div>
+        <div id="hist-container">
+          <div style="text-align:center;padding:40px">
+            <span class="spinner"></span>
+            <div style="margin-top:10px;color:var(--cinza-texto);font-size:13px">Carregando histórico...</div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -119,6 +161,32 @@ export async function inicializarAuditoria() {
         </div>
       </div>
     </div>
+
+    <!-- Modal de fechamento de auditoria -->
+    <div class="modal-backdrop" id="aud-modal-fechar">
+      <div class="modal-box" style="max-width:560px">
+        <button class="modal-close" id="aud-modal-fechar-close">✕</button>
+        <div class="modal-head">
+          <h3>🔒 Fechar auditoria</h3>
+          <p>Registra essa auditoria no histórico com sua revisão</p>
+        </div>
+        <div style="padding:20px 24px 24px">
+          <div id="aud-fechar-resumo" class="aud-fechar-resumo"></div>
+          <div class="aud-fechar-campo">
+            <label>📝 Observações (opcional)</label>
+            <textarea id="aud-fechar-obs" rows="3" placeholder="Ex: Sprite KS +11 = vendedores reabastecem diretamente. Sem ação necessária."></textarea>
+          </div>
+          <div class="aud-fechar-campo">
+            <label>👤 Responsável</label>
+            <input type="text" id="aud-fechar-resp" placeholder="Nome de quem revisou">
+          </div>
+          <div class="aud-pdf-botoes">
+            <button class="btn btn-ghost" id="aud-fechar-cancelar">Cancelar</button>
+            <button class="btn btn-primary" id="aud-fechar-confirmar">🔒 Fechar e salvar no histórico</button>
+          </div>
+        </div>
+      </div>
+    </div>
   `;
 
   // Listeners do toggle
@@ -134,6 +202,11 @@ export async function inicializarAuditoria() {
 
   document.getElementById('aud-executar').onclick = executarAuditoria;
 
+  // Listeners das sub-abas
+  document.querySelectorAll('.subaba').forEach(btn => {
+    btn.onclick = () => trocarSubaba(btn.dataset.subaba);
+  });
+
   // Listeners do modal de PDF
   document.getElementById('aud-btn-pdf').onclick = abrirModalPDF;
   document.getElementById('aud-modal-pdf-close').onclick = fecharModalPDF;
@@ -143,11 +216,36 @@ export async function inicializarAuditoria() {
     if (e.target.id === 'aud-modal-pdf') fecharModalPDF();
   };
 
+  // Listeners do modal de fechamento
+  document.getElementById('aud-btn-fechar').onclick = abrirModalFechar;
+  document.getElementById('aud-modal-fechar-close').onclick = fecharModalFechar;
+  document.getElementById('aud-fechar-cancelar').onclick = fecharModalFechar;
+  document.getElementById('aud-fechar-confirmar').onclick = confirmarFechamento;
+  document.getElementById('aud-modal-fechar').onclick = e => {
+    if (e.target.id === 'aud-modal-fechar') fecharModalFechar();
+  };
+
   // Aplica modo inicial
   aplicarModo();
 
   // Carrega a logo em background (pra uso no PDF)
   carregarLogo();
+}
+
+// ===== SUB-ABAS =====
+function trocarSubaba(nova) {
+  if (nova === abaAtiva) return;
+  abaAtiva = nova;
+
+  document.querySelectorAll('.subaba').forEach(btn => {
+    btn.classList.toggle('ativo', btn.dataset.subaba === nova);
+  });
+  document.getElementById('aud-aba-atual').style.display     = nova === 'atual'     ? 'block' : 'none';
+  document.getElementById('aud-aba-historico').style.display = nova === 'historico' ? 'block' : 'none';
+
+  if (nova === 'historico') {
+    carregarHistorico();
+  }
 }
 
 /**
@@ -181,6 +279,8 @@ function trocarModo(novoModo) {
   document.getElementById('aud-tabela').style.display = 'none';
   document.getElementById('aud-erro').style.display = 'none';
   document.getElementById('aud-acoes').style.display = 'none';
+  document.getElementById('aud-fechada-banner').style.display = 'none';
+  auditoriaFechadaAtual = null;
 }
 
 function aplicarModo() {
@@ -296,12 +396,15 @@ async function executarAuditoria() {
   const resumo  = document.getElementById('aud-resumo');
   const tabela  = document.getElementById('aud-tabela');
   const acoes   = document.getElementById('aud-acoes');
+  const banner  = document.getElementById('aud-fechada-banner');
 
   loading.style.display = 'block';
   erro.style.display    = 'none';
   resumo.style.display  = 'none';
   tabela.style.display  = 'none';
   acoes.style.display   = 'none';
+  banner.style.display  = 'none';
+  auditoriaFechadaAtual = null;
 
   try {
     if (modoAtual === 'operacional') {
@@ -309,6 +412,11 @@ async function executarAuditoria() {
     } else {
       await executarModoVirada();
     }
+
+    // Verifica se essa auditoria já foi fechada antes
+    auditoriaFechadaAtual = await buscarAuditoriaFechada(modoAtual, dataInicio, dataFim);
+    renderizarBannerFechamento();
+
     loading.style.display = 'none';
     resumo.style.display  = 'block';
     tabela.style.display  = 'block';
@@ -317,6 +425,36 @@ async function executarAuditoria() {
     console.error(e);
     mostrarErro('Erro: ' + e.message);
     loading.style.display = 'none';
+  }
+}
+
+/**
+ * Renderiza banner quando a auditoria atual já está fechada.
+ * Muda o botão de "Fechar" pra "Atualizar fechamento".
+ */
+function renderizarBannerFechamento() {
+  const banner = document.getElementById('aud-fechada-banner');
+  const btn    = document.getElementById('aud-btn-fechar');
+
+  if (auditoriaFechadaAtual) {
+    const data = auditoriaFechadaAtual.fechadoEm?.toDate
+      ? auditoriaFechadaAtual.fechadoEm.toDate().toLocaleDateString('pt-BR')
+      : '—';
+    banner.innerHTML = `
+      <div class="aud-fechada-info">
+        <span class="aud-fechada-ico">🔒</span>
+        <div class="aud-fechada-txt">
+          <strong>Auditoria fechada em ${data}</strong>
+          <small>Por: ${auditoriaFechadaAtual.responsavel || auditoriaFechadaAtual.fechadoPor?.nome || '—'}</small>
+          ${auditoriaFechadaAtual.observacoes ? `<div class="aud-fechada-obs">"${auditoriaFechadaAtual.observacoes}"</div>` : ''}
+        </div>
+      </div>
+    `;
+    banner.style.display = 'block';
+    btn.innerHTML = '🔓 Atualizar fechamento';
+  } else {
+    banner.style.display = 'none';
+    btn.innerHTML = '🔒 Fechar auditoria';
   }
 }
 
@@ -1511,6 +1649,214 @@ function gerarPDFVirada(itens, conteudo) {
 
   const nomeArq = `auditoria_virada_${dataInicio}_${dataFim}.pdf`;
   doc.save(nomeArq);
+}
+
+// ========================================================================
+// FECHAMENTO DE AUDITORIA
+// ========================================================================
+
+function abrirModalFechar() {
+  if (!resultadoAuditoria || resultadoAuditoria.length === 0) {
+    alert('Execute a auditoria primeiro.');
+    return;
+  }
+
+  // Resumo rápido no modal
+  const resumoEl = document.getElementById('aud-fechar-resumo');
+  const criticos = resultadoAuditoria.filter(r => r.status === 'critico').length;
+  const atencao  = resultadoAuditoria.filter(r => r.status === 'atencao').length;
+  const leves    = resultadoAuditoria.filter(r => r.status === 'leve').length;
+
+  const periodoLbl = dataInicio === dataFim
+    ? fmtData(dataInicio)
+    : `${fmtData(dataInicio)} → ${fmtData(dataFim)}`;
+
+  const modoLbl = modoAtual === 'operacional' ? '📊 Dia operacional' : '🌙 Virada de dia';
+
+  resumoEl.innerHTML = `
+    <div><strong>${modoLbl}</strong></div>
+    <div>Período: <strong>${periodoLbl}</strong></div>
+    <div style="margin-top:6px">
+      <span class="badge-critico">${criticos} crítico(s)</span>
+      <span class="badge-atencao">${atencao} atenção</span>
+      <span class="badge-leve">${leves} leve(s)</span>
+    </div>
+  `;
+
+  // Pré-preenche se já existe (atualizando fechamento anterior)
+  const obsEl = document.getElementById('aud-fechar-obs');
+  const respEl = document.getElementById('aud-fechar-resp');
+  if (auditoriaFechadaAtual) {
+    obsEl.value  = auditoriaFechadaAtual.observacoes  || '';
+    respEl.value = auditoriaFechadaAtual.responsavel || '';
+  } else {
+    obsEl.value  = '';
+    try {
+      const sessao = getSessao();
+      respEl.value = sessao?.nome || '';
+    } catch { respEl.value = ''; }
+  }
+
+  document.getElementById('aud-modal-fechar').classList.add('open');
+}
+
+function fecharModalFechar() {
+  document.getElementById('aud-modal-fechar').classList.remove('open');
+}
+
+async function confirmarFechamento() {
+  const obs  = document.getElementById('aud-fechar-obs').value.trim();
+  const resp = document.getElementById('aud-fechar-resp').value.trim();
+
+  if (!resp) {
+    alert('Informe o nome do responsável.');
+    return;
+  }
+
+  const btn = document.getElementById('aud-fechar-confirmar');
+  const txtOriginal = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Salvando...';
+
+  try {
+    const sessao = getSessao();
+    const dados = {
+      modo: modoAtual,
+      dataInicio,
+      dataFim,
+      resultado: resultadoAuditoria.map(r => ({
+        slug: r.slug,
+        nome: r.nome,
+        grupo: r.grupo,
+        status: r.status,
+        diagnostico: r.diagnostico || null,
+        ...(modoAtual === 'operacional'
+          ? { ini: r.ini, recebido: r.recebido, vendido: r.vendido, esperado: r.esperado, real: r.real, diferenca: r.diferenca, d1: r.d1 ?? null }
+          : { fimAnterior: r.fimAnterior, iniAtual: r.iniAtual, diferenca: r.diferenca }
+        )
+      })),
+      totais: calcularTotaisResumo(),
+      observacoes: obs,
+      responsavel: resp,
+      fechadoPor: sessao ? { id: sessao.id, nome: sessao.nome } : { id: '', nome: resp }
+    };
+
+    await salvarAuditoriaFechada(dados);
+
+    auditoriaFechadaAtual = dados;
+    renderizarBannerFechamento();
+
+    btn.innerHTML = '✓ Salvo!';
+    setTimeout(() => {
+      fecharModalFechar();
+      btn.innerHTML = txtOriginal;
+      btn.disabled = false;
+    }, 1200);
+
+  } catch (e) {
+    console.error(e);
+    alert('Erro ao salvar: ' + e.message);
+    btn.innerHTML = txtOriginal;
+    btn.disabled = false;
+  }
+}
+
+function calcularTotaisResumo() {
+  const r = resultadoAuditoria;
+  const criticos = r.filter(x => x.status === 'critico').length;
+  const atencao  = r.filter(x => x.status === 'atencao').length;
+  const leves    = r.filter(x => x.status === 'leve').length;
+  const ok       = r.filter(x => x.status === 'ok').length;
+  const totalDif = r.reduce((s, x) => s + (x.diferenca || 0), 0);
+  return { criticos, atencao, leves, ok, totalDivergencia: totalDif };
+}
+
+// ========================================================================
+// HISTÓRICO
+// ========================================================================
+
+async function carregarHistorico() {
+  const container = document.getElementById('hist-container');
+  const sub = document.getElementById('hist-sub');
+
+  container.innerHTML = `
+    <div style="text-align:center;padding:40px">
+      <span class="spinner"></span>
+      <div style="margin-top:10px;color:var(--cinza-texto);font-size:13px">Carregando auditorias fechadas...</div>
+    </div>
+  `;
+
+  try {
+    const auditorias = await listarAuditoriasFechadas();
+
+    if (auditorias.length === 0) {
+      sub.textContent = 'Nenhuma auditoria fechada ainda';
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">🔒</div>
+          <h3>Nenhuma auditoria fechada ainda</h3>
+          <p>Quando você <strong>fechar uma auditoria</strong>, ela aparece aqui com ranking, gráficos e calendário.</p>
+          <p style="font-size:12px;color:var(--cinza-texto);margin-top:10px">
+            Pra fechar: rode uma auditoria na aba <strong>Atual</strong> e clique em <strong>🔒 Fechar auditoria</strong>.
+          </p>
+        </div>
+      `;
+      return;
+    }
+
+    sub.textContent = `${auditorias.length} ${auditorias.length === 1 ? 'auditoria fechada' : 'auditorias fechadas'}`;
+    renderizarDashboardHistorico(auditorias);
+  } catch (e) {
+    console.error(e);
+    container.innerHTML = `<div class="preview-err">Erro ao carregar: ${e.message}</div>`;
+  }
+}
+
+function renderizarDashboardHistorico(auditorias) {
+  const container = document.getElementById('hist-container');
+
+  container.innerHTML = `
+    <div class="hist-aviso">
+      <span>📋</span>
+      <div>
+        <strong>Auditorias fechadas</strong>
+        <small>Ranking + gráficos + calendário serão adicionados na próxima entrega, conforme você acumular mais auditorias fechadas.</small>
+      </div>
+    </div>
+    <div class="hist-lista">
+      ${auditorias.map(a => renderLinhaHistorico(a)).join('')}
+    </div>
+  `;
+}
+
+function renderLinhaHistorico(a) {
+  const modoLbl = a.modo === 'operacional' ? '📊 Operacional' : '🌙 Virada';
+  const periodoLbl = a.dataInicio === a.dataFim
+    ? fmtData(a.dataInicio)
+    : `${fmtData(a.dataInicio)} → ${fmtData(a.dataFim)}`;
+  const t = a.totais || {};
+
+  return `
+    <div class="hist-item">
+      <div class="hist-data">
+        <div class="hist-data-principal">${fmtData(a.dataFim)}</div>
+        <div class="hist-data-modo">${modoLbl}</div>
+      </div>
+      <div class="hist-info">
+        <div class="hist-periodo">${periodoLbl}</div>
+        <div class="hist-status">
+          <span class="hist-s hist-s-c" title="Críticos">${t.criticos || 0}</span>
+          <span class="hist-s hist-s-a" title="Atenção">${t.atencao || 0}</span>
+          <span class="hist-s hist-s-l" title="Leves">${t.leves || 0}</span>
+          <span class="hist-s hist-s-o" title="OK">${t.ok || 0}</span>
+        </div>
+        ${a.observacoes ? `<div class="hist-obs">"${a.observacoes}"</div>` : ''}
+      </div>
+      <div class="hist-meta">
+        <small>Por: ${a.responsavel || '—'}</small>
+      </div>
+    </div>
+  `;
 }
 
 // ===== UTILS =====
