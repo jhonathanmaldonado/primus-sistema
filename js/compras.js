@@ -746,7 +746,8 @@ function exportarPDF() {
     y += 10;
 
     // Cabeçalho da tabela
-    y = desenharCabecalhoTabela(y + 1);
+    y = desenharCabecalhoTabela(y + 5);
+    y += 3;  // espaço adicional antes da primeira linha
 
     // Linhas de produtos
     let subtotalUnidades = 0;

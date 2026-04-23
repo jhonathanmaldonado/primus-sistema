@@ -41,8 +41,8 @@ export const BEBIDAS = [
   // ---------- ÁGUAS ----------
   { nome:'Água Prata Com Gás',      grupo:'💧 Águas', fornecedor:'PRATA',  unidCompra:'caixa', porCaixa:24 },
   { nome:'Água Prata Sem Gás',      grupo:'💧 Águas', fornecedor:'PRATA',  unidCompra:'caixa', porCaixa:24 },
-  { nome:'Água Premium Com Gás',    grupo:'💧 Águas', fornecedor:'AMBEV',  unidCompra:'fardo', porCaixa:12 },
-  { nome:'Água Premium Sem Gás',    grupo:'💧 Águas', fornecedor:'AMBEV',  unidCompra:'fardo', porCaixa:12 },
+  { nome:'Água Premium Com Gás',    grupo:'💧 Águas', fornecedor:'SOLAR+', unidCompra:'fardo', porCaixa:12 },
+  { nome:'Água Premium Sem Gás',    grupo:'💧 Águas', fornecedor:'SOLAR+', unidCompra:'fardo', porCaixa:12 },
 
   // ---------- KOMBUCHAS ----------
   { nome:'Kombucha Guaraná',        grupo:'🌿 Kombuchas', fornecedor:'JONG', unidCompra:'caixa', porCaixa:12 },
