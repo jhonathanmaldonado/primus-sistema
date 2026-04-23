@@ -203,7 +203,8 @@ export async function buscarUltimosPrecos() {
 }
 
 /**
- * Salva os preços pagos numa compra. Sobrescreve o último preço de cada item.
+ * Salva os preços pagos numa compra + registra como recebimento.
+ * Sobrescreve o último preço de cada item e adiciona um recebimento no histórico.
  * @param {array} itens - [{ slug, nome, qtd, precoUnit }]
  * @param {string} fornecedor - nome do fornecedor (opcional, usado como metadado)
  */
@@ -214,6 +215,7 @@ export async function salvarPrecosCompra(itens, fornecedor = '') {
 
   const hoje = new Date().toISOString().slice(0, 10);
   let gravados = 0;
+  const itensValidos = [];
 
   itens.forEach(i => {
     if (!i.precoUnit || i.precoUnit <= 0) return;
@@ -223,16 +225,76 @@ export async function salvarPrecosCompra(itens, fornecedor = '') {
       fornecedor: fornecedor || ''
     };
     gravados++;
+    itensValidos.push(i);
   });
 
   if (gravados === 0) return 0;
 
+  // Salva os preços
   await setDoc(ref, {
     precos,
     atualizadoEm: serverTimestamp()
   });
 
+  // Registra também como recebimento (pra Auditoria usar depois)
+  await registrarRecebimento({
+    data: hoje,
+    fornecedor,
+    itens: itensValidos.map(i => ({
+      slug: i.slug,
+      nome: i.nome,
+      qtd: i.qtd,
+      precoUnit: i.precoUnit,
+      total: i.qtd * i.precoUnit
+    }))
+  });
+
   return gravados;
+}
+
+// ===== RECEBIMENTOS =====
+// Cada recebimento é um documento em primus_compras com ID "receb_YYYY-MM-DD_timestamp"
+// Estrutura: { tipo: 'recebimento', data, fornecedor, itens: [...], criadoEm }
+
+/**
+ * Registra um recebimento (entrada de mercadoria) manualmente.
+ * @param {object} dados - { data: 'YYYY-MM-DD', fornecedor, itens: [{slug, nome, qtd, precoUnit?, total?}] }
+ */
+export async function registrarRecebimento(dados) {
+  const ts = Date.now();
+  const id = `receb_${dados.data}_${ts}`;
+  await setDoc(doc(db, COL_COMPRAS, id), {
+    tipo: 'recebimento',
+    data: dados.data,
+    fornecedor: dados.fornecedor || '',
+    itens: dados.itens || [],
+    criadoEm: serverTimestamp()
+  });
+  return id;
+}
+
+/**
+ * Lista recebimentos entre duas datas (inclusive).
+ */
+export async function listarRecebimentos(dataInicio, dataFim) {
+  const snap = await getDocs(collection(db, COL_COMPRAS));
+  const resultado = [];
+  snap.forEach(d => {
+    const v = d.data();
+    if (v.tipo !== 'recebimento') return;
+    if (v.data < dataInicio || v.data > dataFim) return;
+    resultado.push({ id: d.id, ...v });
+  });
+  // Ordena por data asc
+  resultado.sort((a, b) => a.data.localeCompare(b.data));
+  return resultado;
+}
+
+/**
+ * Exclui um recebimento pelo ID (pra corrigir erro ou remover duplicata).
+ */
+export async function excluirRecebimento(id) {
+  await deleteDoc(doc(db, COL_COMPRAS, id));
 }
 
 // ===== UTIL =====

@@ -8,6 +8,7 @@ import { inicializarDashboard, recarregarDashboard } from './dashboard.js';
 import { inicializarVendas } from './vendas.js';
 import { inicializarUsuarios } from './usuarios.js';
 import { inicializarCompras } from './compras.js';
+import { inicializarAuditoria } from './auditoria.js';
 
 const sessao = exigirPerfil(['gestor']);
 if (!sessao) throw new Error('sem sessão');
@@ -55,6 +56,7 @@ function mostrarView(id) {
   if (id === 'dashboard') carregarDashboard();
   if (id === 'vendas')    carregarVendas();
   if (id === 'compras')   carregarComprasTab();
+  if (id === 'auditoria') carregarAuditoriaTab();
 }
 
 // ===== CARREGADORES DE MÓDULO =====
@@ -63,6 +65,7 @@ let dashboardCarregado = false;
 let vendasCarregado = false;
 let usuariosCarregado = false;
 let comprasCarregado = false;
+let auditoriaCarregado = false;
 
 async function carregarDashboard() {
   if (window._dashboardPrecisaRecarregar) {
@@ -91,6 +94,12 @@ async function carregarComprasTab() {
   if (comprasCarregado) return;
   comprasCarregado = true;
   await inicializarCompras();
+}
+
+async function carregarAuditoriaTab() {
+  if (auditoriaCarregado) return;
+  auditoriaCarregado = true;
+  await inicializarAuditoria();
 }
 
 Object.keys(views).forEach(id => {
