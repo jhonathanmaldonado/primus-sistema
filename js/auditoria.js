@@ -18,6 +18,7 @@ let dataInicio = '';
 let dataFim    = '';
 let resultadoAuditoria = [];
 let contextoAuditoria = {};      // { contagemIni, contagemFin, vendas, recebimentos, contagemFinAnterior }
+let logoDataURL = null;          // logo da Primus em base64 (carregada uma vez)
 
 const fmtMoeda = v => 'R$ ' + (v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtInt   = v => Math.round(v || 0).toLocaleString('pt-BR');
@@ -144,6 +145,30 @@ export async function inicializarAuditoria() {
 
   // Aplica modo inicial
   aplicarModo();
+
+  // Carrega a logo em background (pra uso no PDF)
+  carregarLogo();
+}
+
+/**
+ * Converte a logo.png para base64 uma vez, cacheado em logoDataURL.
+ * jsPDF aceita DataURL direto em addImage.
+ */
+async function carregarLogo() {
+  if (logoDataURL) return;
+  try {
+    const res = await fetch('img/logo.png');
+    const blob = await res.blob();
+    logoDataURL = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload  = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (e) {
+    console.warn('Logo não pôde ser carregada:', e);
+    logoDataURL = null;
+  }
 }
 
 // ===== TOGGLE DE MODO =====
@@ -429,18 +454,25 @@ function calcularAuditoriaOperacional(contagemIni, contagemFin, vendas, recebime
     }
 
     // DIAGNÓSTICO (cruzamento DIF x D-1)
-    // Regra do Jhonathan: se DIF ≈ D-1 (tolerância 2 un), é provável erro de contagem
+    // Lógica correta:
+    // - ERRO DE CONTAGEM: sinais OPOSTOS e valores próximos
+    //   (ex: D-1 = -5 + DIF = +4 → provavelmente alguém contou errado em algum lugar)
+    // - RECORRENTE: sinais IGUAIS (ex: D-1 = -2 + DIF = -3 → problema real continuando)
+    // - ISOLADO: D-1 = 0 e DIF ≠ 0 (virada perfeita, problema só no dia)
     let diagnostico = null;
     if (diferenca !== 0 && d1 !== null) {
-      const dif_d1_proximo = Math.abs(diferenca - d1) <= 2;
       const d1_relevante   = Math.abs(d1) >= 1;
       const dif_relevante  = Math.abs(diferenca) >= 1;
 
-      if (dif_d1_proximo && d1_relevante && dif_relevante) {
-        // DIF e D-1 similares → erro de contagem na virada (FIN anterior ou INI atual)
-        diagnostico = 'erro_contagem';
-      } else if (d1 !== 0 && Math.sign(diferenca) === Math.sign(d1) && Math.abs(diferenca) > Math.abs(d1)) {
-        // Sinais iguais e DIF > D-1 → o problema da virada continua + aumentou
+      if (d1_relevante && dif_relevante && Math.sign(diferenca) !== Math.sign(d1)) {
+        // Sinais opostos → possível erro de contagem.
+        // Quanto mais próximos os módulos, mais provável o erro.
+        // Tolerância: |DIF + D-1| ≤ 2 (se compensam quase exatamente)
+        if (Math.abs(diferenca + d1) <= 2) {
+          diagnostico = 'erro_contagem';
+        }
+      } else if (d1 !== 0 && dif_relevante && Math.sign(diferenca) === Math.sign(d1)) {
+        // Sinais iguais → problema recorrente (acumulativo)
         diagnostico = 'recorrente';
       } else if (d1 === 0 && Math.abs(diferenca) >= 2) {
         // Virada perfeita mas operação gerou divergência
@@ -720,12 +752,12 @@ function renderLinhaOperacional(r) {
     erro_contagem: {
       txt: `🔍 Provável erro de contagem (D-1 = ${fmtSgn(r.d1)})`,
       cls: 'aud-diag-erro',
-      titulo: 'A diferença da auditoria é parecida com a variação entre FIN anterior e INI atual. Provavelmente alguém contou errado em uma dessas duas contagens.'
+      titulo: 'A diferença do dia é oposta à variação D-1 (um faltou, o outro sobrou em quantidades parecidas). Isso sugere que alguém contou errado em uma das contagens — o que "sumiu" numa, "reapareceu" na outra.'
     },
     recorrente: {
       txt: `⚠️ Problema recorrente (D-1 = ${fmtSgn(r.d1)})`,
       cls: 'aud-diag-rec',
-      titulo: 'Já vinha sumindo na virada anterior, e hoje sumiu ainda mais. Pode ser problema contínuo (vazamento de estoque).'
+      titulo: 'A mesma direção de divergência (falta ou sobra) aparece na virada E na auditoria do dia. Indica problema contínuo — pode ser vazamento de estoque ou consumo não registrado sistemático.'
     },
     isolado: {
       txt: `🎯 Problema isolado (D-1 = 0)`,
@@ -936,19 +968,32 @@ function gerarPDFOperacional(itens, conteudo) {
 
   // ========== CABEÇALHO ==========
   doc.setFillColor(124, 0, 71);
-  doc.rect(0, 0, 210, 22, 'F');
+  doc.rect(0, 0, 210, 26, 'F');
+
+  // Logo no canto esquerdo (se tiver carregada)
+  let textStartX = margL + 2;
+  if (logoDataURL) {
+    try {
+      // Logo quadrada de 20x20mm, centralizada verticalmente
+      doc.addImage(logoDataURL, 'PNG', margL, 3, 20, 20);
+      textStartX = margL + 24;  // desloca o texto pra direita
+    } catch (e) {
+      console.warn('Erro ao adicionar logo ao PDF:', e);
+    }
+  }
+
   doc.setTextColor(255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(16);
-  doc.text('PRIMUS PEIXARIA', margL + 2, 10);
+  doc.text('PRIMUS PEIXARIA', textStartX, 11);
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  doc.text('Auditoria de Estoque — Dia operacional', margL + 2, 16);
+  doc.text('Auditoria de Estoque — Dia operacional', textStartX, 17);
   doc.setFontSize(8);
-  doc.text(`Gerado em ${hoje}`, margR - 2, 16, { align: 'right' });
+  doc.text(`Gerado em ${hoje}`, margR - 2, 17, { align: 'right' });
 
   // ========== PERÍODO E INFO ==========
-  let y = 30;
+  let y = 34;
   doc.setTextColor(0);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
@@ -971,39 +1016,49 @@ function gerarPDFOperacional(itens, conteudo) {
   const totalFin = resultadoAuditoria.reduce((s, r) => s + r.real, 0);
   const totalDif = resultadoAuditoria.reduce((s, r) => s + r.diferenca, 0);
 
-  // Bloco cinza com a equação
-  doc.setFillColor(245, 243, 240);
-  doc.rect(margL, y, margR - margL, 14, 'F');
+  // Layout: 5 caixinhas de valores + 1 caixa destacada da DIFERENÇA à direita
+  // Total largura disponível: margR - margL = 186mm
+  // Reservamos 32mm pra DIFERENÇA + 2mm de gap = 34mm
+  // Sobra 152mm pra 5 caixinhas = 30.4mm cada
+  const boxDifW = 32;
+  const gapDif  = 2;
+  const areaEqW = (margR - margL) - boxDifW - gapDif;   // 152mm
+  const boxW    = areaEqW / 5;                           // 30.4mm cada
 
-  // Posições das caixas
-  const bWidth = (margR - margL) / 5 - 4;
-  const positions = [
-    { lbl: 'INICIAL',   val: fmtInt(totalIni), x: margL + 2 },
-    { lbl: '+ RECEB',   val: fmtInt(totalRec), x: margL + bWidth * 1 + 8 },
-    { lbl: '- VENDIDO', val: fmtInt(totalVen), x: margL + bWidth * 2 + 12 },
-    { lbl: '= ESPER.',  val: fmtInt(totalIni + totalRec - totalVen), x: margL + bWidth * 3 + 16 },
-    { lbl: 'REAL',      val: fmtInt(totalFin), x: margL + bWidth * 4 + 20 },
+  // Fundo da área das 5 caixinhas
+  doc.setFillColor(245, 243, 240);
+  doc.rect(margL, y, areaEqW, 14, 'F');
+
+  const labels = [
+    { lbl: 'INICIAL',    val: fmtInt(totalIni) },
+    { lbl: '+ RECEBIDO', val: fmtInt(totalRec) },
+    { lbl: '- VENDIDO',  val: fmtInt(totalVen) },
+    { lbl: '= ESPERADO', val: fmtInt(totalIni + totalRec - totalVen) },
+    { lbl: 'REAL',       val: fmtInt(totalFin) },
   ];
-  positions.forEach(p => {
+
+  labels.forEach((item, i) => {
+    const cx = margL + i * boxW + boxW / 2;  // centro da caixinha
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
     doc.setTextColor(120);
-    doc.text(p.lbl, p.x, y + 4);
+    doc.text(item.lbl, cx, y + 4.5, { align: 'center' });
     doc.setFontSize(12);
     doc.setTextColor(0);
-    doc.text(p.val, p.x, y + 11);
+    doc.text(item.val, cx, y + 11, { align: 'center' });
   });
 
-  // Diferença no canto direito (destaque)
+  // Caixa da DIFERENÇA (colorida, à direita)
+  const difX = margL + areaEqW + gapDif;
   const corDif = totalDif < 0 ? [181, 69, 27] : totalDif > 0 ? [240, 165, 0] : [46, 125, 50];
   doc.setFillColor(...corDif);
-  doc.rect(margR - 30, y, 30, 14, 'F');
+  doc.rect(difX, y, boxDifW, 14, 'F');
   doc.setTextColor(255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7);
-  doc.text('DIFERENÇA', margR - 15, y + 4, { align: 'center' });
+  doc.text('DIFERENÇA', difX + boxDifW / 2, y + 4.5, { align: 'center' });
   doc.setFontSize(14);
-  doc.text(fmtSgn(totalDif), margR - 15, y + 11, { align: 'center' });
+  doc.text(fmtSgn(totalDif), difX + boxDifW / 2, y + 11, { align: 'center' });
   doc.setTextColor(0);
   y += 18;
 
@@ -1224,18 +1279,29 @@ function gerarPDFVirada(itens, conteudo) {
 
   // Cabeçalho
   doc.setFillColor(124, 0, 71);
-  doc.rect(0, 0, 210, 22, 'F');
+  doc.rect(0, 0, 210, 26, 'F');
+
+  let textStartX = margL + 2;
+  if (logoDataURL) {
+    try {
+      doc.addImage(logoDataURL, 'PNG', margL, 3, 20, 20);
+      textStartX = margL + 24;
+    } catch (e) {
+      console.warn('Erro ao adicionar logo ao PDF:', e);
+    }
+  }
+
   doc.setTextColor(255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(16);
-  doc.text('PRIMUS PEIXARIA', margL + 2, 10);
+  doc.text('PRIMUS PEIXARIA', textStartX, 11);
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  doc.text('Auditoria de Estoque — Virada de dia', margL + 2, 16);
+  doc.text('Auditoria de Estoque — Virada de dia', textStartX, 17);
   doc.setFontSize(8);
-  doc.text(`Gerado em ${hoje}`, margR - 2, 16, { align: 'right' });
+  doc.text(`Gerado em ${hoje}`, margR - 2, 17, { align: 'right' });
 
-  let y = 30;
+  let y = 34;
   doc.setTextColor(0);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
@@ -1250,39 +1316,51 @@ function gerarPDFVirada(itens, conteudo) {
   doc.setTextColor(0);
   y += 8;
 
-  // Equação simplificada
+  // Equação simplificada (FIN vs INI = DIF)
   const totalFim = resultadoAuditoria.reduce((s, r) => s + r.fimAnterior, 0);
   const totalIni = resultadoAuditoria.reduce((s, r) => s + r.iniAtual, 0);
   const totalDif = resultadoAuditoria.reduce((s, r) => s + r.diferenca, 0);
 
-  doc.setFillColor(245, 243, 240);
-  doc.rect(margL, y, margR - margL, 14, 'F');
+  // Layout: 2 caixinhas (FIN e INI) + 1 caixa de DIFERENÇA
+  const boxDifW = 32;
+  const gapDif  = 2;
+  const areaEqW = (margR - margL) - boxDifW - gapDif;
+  const boxW    = areaEqW / 2;
 
-  const w = (margR - margL - 30) / 2;
+  doc.setFillColor(245, 243, 240);
+  doc.rect(margL, y, areaEqW, 14, 'F');
+
+  // FIN anterior
+  let cx = margL + boxW / 2;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7);
   doc.setTextColor(120);
-  doc.text(`FIN ${fmtData(dataInicio)}`, margL + 4, y + 4);
+  doc.text(`FIN ${fmtData(dataInicio)}`, cx, y + 4.5, { align: 'center' });
   doc.setFontSize(12);
   doc.setTextColor(0);
-  doc.text(fmtInt(totalFim), margL + 4, y + 11);
+  doc.text(fmtInt(totalFim), cx, y + 11, { align: 'center' });
 
+  // INI atual
+  cx = margL + boxW + boxW / 2;
+  doc.setFont('helvetica', 'bold');
   doc.setFontSize(7);
   doc.setTextColor(120);
-  doc.text(`INI ${fmtData(dataFim)}`, margL + 4 + w, y + 4);
+  doc.text(`INI ${fmtData(dataFim)}`, cx, y + 4.5, { align: 'center' });
   doc.setFontSize(12);
   doc.setTextColor(0);
-  doc.text(fmtInt(totalIni), margL + 4 + w, y + 11);
+  doc.text(fmtInt(totalIni), cx, y + 11, { align: 'center' });
 
+  // DIFERENÇA (caixa colorida à direita)
+  const difX = margL + areaEqW + gapDif;
   const corDif = totalDif < 0 ? [181, 69, 27] : totalDif > 0 ? [240, 165, 0] : [46, 125, 50];
   doc.setFillColor(...corDif);
-  doc.rect(margR - 30, y, 30, 14, 'F');
+  doc.rect(difX, y, boxDifW, 14, 'F');
   doc.setTextColor(255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7);
-  doc.text('DIFERENÇA', margR - 15, y + 4, { align: 'center' });
+  doc.text('DIFERENÇA', difX + boxDifW / 2, y + 4.5, { align: 'center' });
   doc.setFontSize(14);
-  doc.text(fmtSgn(totalDif), margR - 15, y + 11, { align: 'center' });
+  doc.text(fmtSgn(totalDif), difX + boxDifW / 2, y + 11, { align: 'center' });
   doc.setTextColor(0);
   y += 18;
 
