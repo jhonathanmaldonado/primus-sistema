@@ -106,13 +106,18 @@ async function carregarECalcular() {
   rodape.style.display  = 'none';
 
   try {
-    // 1) Busca última contagem INI (estoque atual)
-    const contagens = await listarContagens({ tipo: 'ini', limite: 50 });
-    if (!contagens.length) {
-      mostrarVazio('Nenhuma contagem de Bebidas Início foi encontrada. Peça pro barman fazer uma contagem primeiro.');
+    // 1) Busca a contagem MAIS RECENTE de bebidas (ini ou fin).
+    // A lógica: o estoque atual é o que foi contado por último.
+    // Se a última contagem foi "fin" (encerramento do dia), é o que vale.
+    // Se foi "ini" (abertura), também vale.
+    const todasContagens = await listarContagens({ limite: 200 });
+    const contagensBebidas = todasContagens.filter(c => c.tipo === 'ini' || c.tipo === 'fin');
+
+    if (!contagensBebidas.length) {
+      mostrarVazio('Nenhuma contagem de bebidas encontrada. Peça pro barman fazer uma contagem primeiro.');
       return;
     }
-    const ultimaContagem = contagens[0];  // já vem ordenada desc
+    const ultimaContagem = contagensBebidas[0];  // já vem ordenada desc (data + criadoEm)
 
     // 2) Busca vendas dos últimos 14 dias
     const hoje = new Date();
@@ -181,19 +186,37 @@ async function criarFornecedoresPadrao() {
 
 // ===== MOTOR DO CÁLCULO =====
 // Para cada bebida:
-//   estoque = qtd na última contagem "ini"
+//   estoque = qtd na última contagem (ini ou fin)
 //   consumo = soma das qtd vendidas no período / dias com venda (média diária real)
 //   cobertura = estoque / consumo (em dias)
-//   sugerido = max(0, consumo * 7 - estoque)
+//   sugerido = max(0, consumo * 7 - estoque)  (arredondado pra caixa cheia)
 function calcularSugestao(contagem, vendas) {
-  // Extrai estoque por produto a partir da contagem
-  // Estrutura de contagem.itens: { slug: { freezer: N, estoque: N, obs?: '...' } }
+  // Extrai estoque por produto, tratando as duas estruturas possíveis:
+  //
+  // Contagem tipo "ini" (Bebidas Início):
+  //   { fr: 50, est: 30, total: 80, obs: '...' }  → estoque = total (ou fr+est)
+  //
+  // Contagem tipo "fin" (Bebidas Final):
+  //   { abast: 10, final: 127, vendeu: -117, obs: '...' }  → estoque = final
+  //   (o "final" é literalmente quantas unidades sobraram no fim do dia)
   const estoquePorSlug = {};
-  Object.entries(contagem.itens || {}).forEach(([slug, v]) => {
-    if (typeof v === 'object' && v !== null) {
-      const total = (v.freezer || 0) + (v.estoque || 0);
-      estoquePorSlug[slug] = total;
+  const tipoContagem = contagem.tipo;
+
+  Object.entries(contagem.itens || {}).forEach(([chave, v]) => {
+    if (typeof v !== 'object' || v === null) return;
+
+    // Contagem fin: chave tem sufixo "__fin" e estoque vem de "final"
+    if (chave.endsWith('__fin')) {
+      const slug = chave.replace(/__fin$/, '');
+      estoquePorSlug[slug] = v.final || 0;
+      return;
     }
+
+    // Contagem ini: chave é o slug direto, estoque = fr + est (ou total se existir)
+    const total = (typeof v.total === 'number' && v.total > 0)
+      ? v.total
+      : (v.fr || v.freezer || 0) + (v.est || v.estoque || 0);
+    estoquePorSlug[chave] = total;
   });
 
   // Calcula consumo médio por produto, com matching fuzzy:
@@ -276,7 +299,10 @@ function renderizar(contagemUsada, totalDiasVendas) {
   const lista  = document.getElementById('compras-lista');
   const rodape = document.getElementById('compras-acoes-rodape');
 
-  sub.innerHTML = `Última contagem: <strong>${fmtData(contagemUsada.data)}</strong> · Vendas de <strong>${totalDiasVendas} ${totalDiasVendas === 1 ? 'dia' : 'dias'}</strong>`;
+  const tipoLabel = contagemUsada.tipo === 'fin' ? 'Bebidas Final' :
+                    contagemUsada.tipo === 'ini' ? 'Bebidas Início' :
+                    contagemUsada.tipo;
+  sub.innerHTML = `Última contagem: <strong>${fmtData(contagemUsada.data)}</strong> (${tipoLabel}) · Vendas de <strong>${totalDiasVendas} ${totalDiasVendas === 1 ? 'dia' : 'dias'}</strong>`;
 
   // Resumo superior: KPIs rápidos
   const criticos = sugestaoCache.filter(s => s.status === 'critico').length;
@@ -495,102 +521,194 @@ function exportarPDF() {
     return;
   }
 
-  gruposFiltrados.forEach((g, idx) => {
-    if (idx > 0) doc.addPage();
+  // ========== CABEÇALHO DA PÁGINA ==========
+  doc.setFillColor(124, 0, 71);  // vinho
+  doc.rect(0, 0, 210, 22, 'F');
+  doc.setTextColor(255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text('PRIMUS PEIXARIA', 15, 10);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Lista de Compras — Controle Interno', 15, 16);
+  doc.text(dataHoje, 195, 16, { align: 'right' });
 
-    // Cabeçalho
-    doc.setFillColor(124, 0, 71);  // vinho
-    doc.rect(0, 0, 210, 30, 'F');
+  // ========== CONTEÚDO ==========
+  let y = 30;
+  const marginL = 12;
+  const marginR = 198;
+
+  // Colunas: Produto | Qtd | Un | Conv | R$ unit. | R$ total
+  // Larguras (da esquerda pra direita)
+  const colX = {
+    produto: marginL + 2,
+    qtd:     115,
+    un:      126,
+    conv:    142,
+    unit:    168,
+    total:   marginR - 2
+  };
+
+  // Cabeçalho de tabela
+  function desenharCabecalhoTabela(yPos) {
+    doc.setFillColor(30, 30, 30);
+    doc.rect(marginL, yPos - 4, marginR - marginL, 6, 'F');
+    doc.setTextColor(255);
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'bold');
+    doc.text('PRODUTO',   colX.produto,  yPos);
+    doc.text('QTD',       colX.qtd,      yPos, { align: 'right' });
+    doc.text('UN',        colX.un,       yPos, { align: 'right' });
+    doc.text('CAIXA/FARDO', colX.conv,   yPos);
+    doc.text('R$ UNIT.',  colX.unit,     yPos, { align: 'right' });
+    doc.text('R$ TOTAL',  colX.total,    yPos, { align: 'right' });
+    doc.setTextColor(0);
+    return yPos + 3;
+  }
+
+  // Quebra de página
+  function verificarQuebra(yAtual, espacoNecessario = 10) {
+    if (yAtual + espacoNecessario > 285) {
+      doc.addPage();
+      return 15;
+    }
+    return yAtual;
+  }
+
+  let totalGeralUnidades = 0;
+  let totalGeralItens = 0;
+
+  gruposFiltrados.forEach((g, idx) => {
+    y = verificarQuebra(y, 20);
+
+    // Título do fornecedor (bloco vinho com nome)
+    doc.setFillColor(124, 0, 71);
+    doc.rect(marginL, y, marginR - marginL, 7, 'F');
     doc.setTextColor(255);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(20);
-    doc.text('PRIMUS PEIXARIA', 15, 15);
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Lista de Compras · ' + dataHoje, 15, 22);
+    doc.setFontSize(11);
+    doc.text(g.nome, colX.produto, y + 5);
 
-    // Fornecedor
-    doc.setTextColor(0);
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text(g.nome, 15, 42);
+    // Telefone alinhado à direita no título (se tiver)
     if (g.fornecedor?.telefone) {
-      doc.setFontSize(10);
+      doc.setFontSize(9);
       doc.setFont('helvetica', 'normal');
-      doc.text('Tel: ' + g.fornecedor.telefone, 15, 48);
+      doc.text(`Tel: ${g.fornecedor.telefone}`, marginR - 2, y + 5, { align: 'right' });
     }
+    doc.setTextColor(0);
+    y += 10;
 
-    // Tabela
-    let y = 58;
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.setFillColor(240, 240, 240);
-    doc.rect(15, y - 5, 180, 7, 'F');
-    doc.text('Produto', 17, y);
-    doc.text('Qtd', 130, y, { align: 'right' });
-    doc.text('Un', 140, y, { align: 'right' });
-    doc.text('Conversão', 190, y, { align: 'right' });
-    y += 4;
-    doc.setLineWidth(0.3);
-    doc.line(15, y, 195, y);
-    y += 4;
+    // Cabeçalho da tabela
+    y = desenharCabecalhoTabela(y + 1);
 
-    doc.setFont('helvetica', 'normal');
-    let totalUnidades = 0;
-    let totalCaixas = 0;
-    let totalFardos = 0;
+    // Linhas de produtos
+    let subtotalUnidades = 0;
+    let subtotalItens = 0;
 
     g.itens.forEach(i => {
+      y = verificarQuebra(y, 6);
+
       const qtd = quantidadesAjustadas[i.slug] ?? i.sugerido;
-      totalUnidades += qtd;
+      subtotalUnidades += qtd;
+      subtotalItens++;
+
       const produtoInfo = { unidCompra: i.unidCompra, porCaixa: i.porCaixa };
-      const conv = converterParaCaixas(qtd, produtoInfo) || '—';
+      // Conversão compacta pro PDF: "10 cx" ou "3 fd + 2un" etc
+      const conv = conversaoCurta(qtd, produtoInfo);
 
-      // Soma caixas/fardos (pra total do rodapé)
-      if (i.unidCompra && i.porCaixa > 1) {
-        const nCaixas = Math.floor(qtd / i.porCaixa);
-        if (i.unidCompra === 'caixa') totalCaixas += nCaixas;
-        else if (i.unidCompra === 'fardo') totalFardos += nCaixas;
-      }
-
-      if (y > 270) {
-        doc.addPage();
-        y = 20;
-      }
-
-      doc.text(i.nome, 17, y);
-      doc.text(fmtInt(qtd), 130, y, { align: 'right' });
-      doc.text('un', 140, y, { align: 'right' });
-      doc.setTextColor(90);
-      doc.text(conv, 190, y, { align: 'right' });
+      doc.setFontSize(8.5);
+      doc.setFont('helvetica', 'normal');
       doc.setTextColor(0);
-      y += 6;
+      // Nome (cortado se for muito longo)
+      const nomeCurto = i.nome.length > 40 ? i.nome.slice(0, 38) + '…' : i.nome;
+      doc.text(nomeCurto, colX.produto, y);
+
+      doc.text(String(qtd), colX.qtd, y, { align: 'right' });
+      doc.setTextColor(120);
+      doc.text('un', colX.un, y, { align: 'right' });
+      doc.text(conv, colX.conv, y);
+      doc.setTextColor(0);
+
+      // Linhas de preenchimento pra R$ unit. e R$ total
+      // (campos em branco com linha tracejada pra escrever)
+      doc.setDrawColor(180);
+      doc.setLineWidth(0.2);
+      // R$ unit. - linha tracejada
+      doc.line(colX.unit - 18, y + 0.8, colX.unit, y + 0.8);
+      // R$ total - linha tracejada
+      doc.line(colX.total - 18, y + 0.8, colX.total, y + 0.8);
+
+      // Linha horizontal separadora (muito sutil)
+      doc.setDrawColor(230);
+      doc.setLineWidth(0.15);
+      doc.line(marginL, y + 2.5, marginR, y + 2.5);
+
+      y += 5.5;
     });
 
-    // Total
-    y += 4;
-    doc.line(15, y, 195, y);
-    y += 7;
+    // Total do fornecedor
+    y += 1;
+    doc.setFillColor(245, 243, 240);
+    doc.rect(marginL, y - 3, marginR - marginL, 6, 'F');
     doc.setFont('helvetica', 'bold');
-    doc.text(`Total: ${fmtInt(totalUnidades)} unidades`, 15, y);
-    const resumoCaixas = [];
-    if (totalCaixas > 0) resumoCaixas.push(`${totalCaixas} ${totalCaixas === 1 ? 'caixa' : 'caixas'}`);
-    if (totalFardos > 0) resumoCaixas.push(`${totalFardos} ${totalFardos === 1 ? 'fardo' : 'fardos'}`);
-    if (resumoCaixas.length) {
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(10);
-      doc.text('(' + resumoCaixas.join(' + ') + ')', 195, y, { align: 'right' });
-    }
+    doc.setFontSize(8.5);
+    doc.setTextColor(80);
+    doc.text(`${subtotalItens} ${subtotalItens === 1 ? 'item' : 'itens'}`, colX.produto, y + 1);
+    doc.setTextColor(124, 0, 71);
+    doc.text(`Subtotal: ${subtotalUnidades} un`, colX.qtd + 25, y + 1, { align: 'right' });
+    // Espaço pra preencher total do fornecedor em R$
+    doc.setTextColor(80);
+    doc.setFont('helvetica', 'normal');
+    doc.text('R$', colX.unit - 22, y + 1);
+    doc.setDrawColor(124, 0, 71);
+    doc.setLineWidth(0.5);
+    doc.line(colX.unit - 18, y + 1.5, colX.total, y + 1.5);
 
-    // Rodapé
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'italic');
-    doc.setTextColor(120);
-    doc.text('Gerado pelo Sistema Primus em ' + dataHoje, 15, 285);
+    totalGeralUnidades += subtotalUnidades;
+    totalGeralItens += subtotalItens;
+    y += 10;
   });
+
+  // ========== RODAPÉ COM TOTAL GERAL ==========
+  y = verificarQuebra(y, 20);
+  doc.setFillColor(30, 30, 30);
+  doc.rect(marginL, y, marginR - marginL, 10, 'F');
+  doc.setTextColor(255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text('TOTAL GERAL', colX.produto, y + 6.5);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`${totalGeralItens} itens · ${totalGeralUnidades} unidades`, colX.qtd + 25, y + 6.5, { align: 'right' });
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.text('R$', colX.unit - 22, y + 6.5);
+  doc.setDrawColor(250, 185, 0);  // amarelo
+  doc.setLineWidth(0.6);
+  doc.line(colX.unit - 18, y + 7.5, colX.total, y + 7.5);
+  y += 14;
+
+  // ========== LEGENDA/DATA ==========
+  doc.setTextColor(130);
+  doc.setFontSize(7);
+  doc.setFont('helvetica', 'italic');
+  doc.text('Preencha os campos em branco com os valores pagos. Gerado pelo Sistema Primus em ' + dataHoje, marginL, y);
 
   doc.save(`lista_compras_${dataHoje.replace(/\//g, '-')}.pdf`);
   mostrarToast('PDF gerado!', 'ok');
+}
+
+// Versão curta de conversão pra caber no PDF
+// Ex: "10 cx", "3 cx + 7 un", "5 fd"
+function conversaoCurta(qtd, produto) {
+  if (!produto?.unidCompra || !produto?.porCaixa || produto.porCaixa <= 1) return '';
+  if (qtd <= 0) return '';
+  const caixas = Math.floor(qtd / produto.porCaixa);
+  const resto  = qtd % produto.porCaixa;
+  const sigla = produto.unidCompra === 'fardo' ? 'fd' : 'cx';
+  if (caixas === 0) return `${resto} un`;
+  if (resto === 0)   return `${caixas} ${sigla}`;
+  return `${caixas} ${sigla} + ${resto} un`;
 }
 
 // ===== MODAL DE FORNECEDORES =====
