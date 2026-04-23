@@ -1828,6 +1828,41 @@ function renderizarDashboardHistorico(auditorias) {
         <small>Ranking + gráficos + calendário serão adicionados na próxima entrega, conforme você acumular mais auditorias fechadas.</small>
       </div>
     </div>
+
+    <div class="hist-legenda">
+      <div class="hist-legenda-titulo">Entendendo os status:</div>
+      <div class="hist-legenda-items">
+        <div class="hist-legenda-item">
+          <span class="hist-s hist-s-c">n</span>
+          <div>
+            <strong>Críticos</strong>
+            <small>Divergência ≥ 5 unidades — investigar urgente</small>
+          </div>
+        </div>
+        <div class="hist-legenda-item">
+          <span class="hist-s hist-s-a">n</span>
+          <div>
+            <strong>Atenção</strong>
+            <small>Divergência de 2 a 4 unidades — monitorar</small>
+          </div>
+        </div>
+        <div class="hist-legenda-item">
+          <span class="hist-s hist-s-l">n</span>
+          <div>
+            <strong>Leves</strong>
+            <small>Divergência de 1 unidade — margem aceitável</small>
+          </div>
+        </div>
+        <div class="hist-legenda-item">
+          <span class="hist-s hist-s-o">n</span>
+          <div>
+            <strong>OK</strong>
+            <small>Sem divergência — tudo batendo</small>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="hist-lista">
       ${auditorias.map(a => renderLinhaHistorico(a)).join('')}
     </div>
@@ -1858,7 +1893,243 @@ function renderLinhaHistorico(a) {
         ${a.observacoes ? `<div class="hist-obs">"${a.observacoes}"</div>` : ''}
       </div>
       <div class="hist-meta">
-        <small>Por: ${a.responsavel || '—'}</small>
+        <button class="btn btn-ghost btn-sm" onclick="window.__aud_abrirFechada('${a.id}')">🔍 Abrir</button>
+        <small style="display:block;margin-top:4px;text-align:right">Por: ${a.responsavel || '—'}</small>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Abre uma auditoria fechada a partir do snapshot salvo.
+ * Volta pra aba Atual, preenche datas/modo, renderiza a tabela com os dados congelados.
+ */
+window.__aud_abrirFechada = async function(id) {
+  try {
+    // Busca todas as auditorias e acha a que tem esse ID
+    const auditorias = await listarAuditoriasFechadas();
+    const a = auditorias.find(x => x.id === id);
+    if (!a) {
+      alert('Auditoria não encontrada.');
+      return;
+    }
+
+    // Volta pra aba Atual
+    trocarSubaba('atual');
+
+    // Aplica modo e datas
+    if (a.modo !== modoAtual) {
+      modoAtual = a.modo;
+      aplicarModo();
+    }
+    document.getElementById('aud-data-inicio').value = a.dataInicio;
+    document.getElementById('aud-data-fim').value    = a.dataFim;
+    dataInicio = a.dataInicio;
+    dataFim    = a.dataFim;
+
+    // Hidrata estado com o snapshot (dados congelados) — não recalcula
+    resultadoAuditoria = a.resultado || [];
+    // Reconstitui campos de produto (grupo, unidCompra, porCaixa) a partir do catálogo atual
+    // — pra conversão de caixa/fardo funcionar no render
+    resultadoAuditoria = resultadoAuditoria.map(r => {
+      const bebida = BEBIDAS.find(b => slugify(b.nome) === r.slug);
+      return {
+        ...r,
+        grupo: r.grupo || bebida?.grupo || '',
+        unidCompra: bebida?.unidCompra,
+        porCaixa: bebida?.porCaixa
+      };
+    });
+
+    // Define contexto mínimo pro PDF funcionar
+    contextoAuditoria = {
+      contagemIni: null,
+      contagemFin: null,
+      vendas: [],
+      recebimentos: [],
+      contagemFinAnterior: null,
+      // flag pra renderizador saber que veio de histórico (não usa vendas.length)
+      deHistorico: true
+    };
+
+    // Marca como auditoria fechada (pra banner aparecer)
+    auditoriaFechadaAtual = a;
+
+    // Renderiza conforme o modo
+    if (a.modo === 'operacional') {
+      renderizarResumoHistorico(a);
+      renderizarTabelaOperacional();
+    } else {
+      renderizarResumoViradaHistorico(a);
+      renderizarTabelaVirada();
+    }
+
+    renderizarBannerFechamento();
+
+    // Mostra seções
+    document.getElementById('aud-resumo').style.display = 'block';
+    document.getElementById('aud-tabela').style.display = 'block';
+    document.getElementById('aud-acoes').style.display  = 'flex';
+
+    // Scroll suave pra seção da tabela
+    setTimeout(() => {
+      document.getElementById('aud-resumo').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+
+  } catch (e) {
+    console.error(e);
+    alert('Erro ao abrir auditoria: ' + e.message);
+  }
+};
+
+/**
+ * Versão simplificada do renderizarResumoOperacional pra quando abrimos do histórico.
+ * Não precisa recalcular nada — só exibe o snapshot.
+ */
+function renderizarResumoHistorico(a) {
+  const resumo = document.getElementById('aud-resumo');
+  const sub = document.getElementById('aud-sub');
+
+  const periodoLabel = a.dataInicio === a.dataFim
+    ? fmtData(a.dataInicio)
+    : `${fmtData(a.dataInicio)} → ${fmtData(a.dataFim)}`;
+  sub.textContent = `📜 Snapshot de ${periodoLabel} (auditoria fechada)`;
+
+  const t = a.totais || {};
+  const r = a.resultado || [];
+
+  // Recalcula totais do snapshot pra equação
+  const totalIni = r.reduce((s, x) => s + (x.ini || 0), 0);
+  const totalRec = r.reduce((s, x) => s + (x.recebido || 0), 0);
+  const totalVen = r.reduce((s, x) => s + (x.vendido || 0), 0);
+  const totalFin = r.reduce((s, x) => s + (x.real || 0), 0);
+  const totalDif = r.reduce((s, x) => s + (x.diferenca || 0), 0);
+
+  const criticos = r.filter(x => x.status === 'critico').length;
+  const atencao  = r.filter(x => x.status === 'atencao').length;
+  const leves    = r.filter(x => x.status === 'leve').length;
+  const ok       = r.filter(x => x.status === 'ok').length;
+  const semdados = r.filter(x => x.status === 'semdados').length;
+
+  resumo.innerHTML = `
+    <div class="aud-kpis">
+      <div class="aud-kpi aud-kpi-critico">
+        <div class="aud-kpi-val">${criticos}</div>
+        <div class="aud-kpi-label">CRÍTICOS (≥5 un)</div>
+      </div>
+      <div class="aud-kpi aud-kpi-atencao">
+        <div class="aud-kpi-val">${atencao}</div>
+        <div class="aud-kpi-label">ATENÇÃO (2-4)</div>
+      </div>
+      <div class="aud-kpi aud-kpi-leve">
+        <div class="aud-kpi-val">${leves}</div>
+        <div class="aud-kpi-label">LEVES (1)</div>
+      </div>
+      <div class="aud-kpi aud-kpi-ok">
+        <div class="aud-kpi-val">${ok}</div>
+        <div class="aud-kpi-label">OK (0)</div>
+      </div>
+      <div class="aud-kpi aud-kpi-semdados">
+        <div class="aud-kpi-val">${semdados}</div>
+        <div class="aud-kpi-label">SEM DADOS</div>
+      </div>
+    </div>
+
+    <div class="aud-equacao">
+      <div class="aud-eq-item">
+        <div class="aud-eq-label">INICIAL</div>
+        <div class="aud-eq-val">${fmtInt(totalIni)}</div>
+      </div>
+      <div class="aud-eq-op">+</div>
+      <div class="aud-eq-item aud-eq-recebido">
+        <div class="aud-eq-label">RECEBIDO</div>
+        <div class="aud-eq-val">${fmtInt(totalRec)}</div>
+      </div>
+      <div class="aud-eq-op">−</div>
+      <div class="aud-eq-item aud-eq-vendido">
+        <div class="aud-eq-label">VENDIDO</div>
+        <div class="aud-eq-val">${fmtInt(totalVen)}</div>
+      </div>
+      <div class="aud-eq-op">=</div>
+      <div class="aud-eq-item aud-eq-esperado">
+        <div class="aud-eq-label">ESPERADO</div>
+        <div class="aud-eq-val">${fmtInt(totalIni + totalRec - totalVen)}</div>
+      </div>
+      <div class="aud-eq-op aud-eq-vs">vs</div>
+      <div class="aud-eq-item aud-eq-real">
+        <div class="aud-eq-label">REAL (FIN)</div>
+        <div class="aud-eq-val">${fmtInt(totalFin)}</div>
+      </div>
+      <div class="aud-eq-op">=</div>
+      <div class="aud-eq-item ${totalDif < 0 ? 'aud-eq-neg' : totalDif > 0 ? 'aud-eq-pos' : 'aud-eq-zero'}">
+        <div class="aud-eq-label">DIFERENÇA</div>
+        <div class="aud-eq-val">${fmtSgn(totalDif)}</div>
+      </div>
+    </div>
+  `;
+}
+
+/** Versão do resumo pro modo virada, usando snapshot. */
+function renderizarResumoViradaHistorico(a) {
+  const resumo = document.getElementById('aud-resumo');
+  const sub = document.getElementById('aud-sub');
+  const r = a.resultado || [];
+
+  const dias = diffDias(a.dataInicio, a.dataFim);
+  const labelDias = dias === 1 ? '1 dia de parada (noite)' : `${dias} dias de parada (parada semanal)`;
+  sub.textContent = `📜 Snapshot — 🌙 Virada: ${fmtData(a.dataInicio)} → ${fmtData(a.dataFim)} · ${labelDias}`;
+
+  const criticos = r.filter(x => x.status === 'critico').length;
+  const atencao  = r.filter(x => x.status === 'atencao').length;
+  const leves    = r.filter(x => x.status === 'leve').length;
+  const ok       = r.filter(x => x.status === 'ok').length;
+  const semdados = r.filter(x => x.status === 'semdados').length;
+
+  const totalFim = r.reduce((s, x) => s + (x.fimAnterior || 0), 0);
+  const totalIni = r.reduce((s, x) => s + (x.iniAtual || 0), 0);
+  const totalDif = r.reduce((s, x) => s + (x.diferenca || 0), 0);
+
+  resumo.innerHTML = `
+    <div class="aud-kpis">
+      <div class="aud-kpi aud-kpi-critico">
+        <div class="aud-kpi-val">${criticos}</div>
+        <div class="aud-kpi-label">CRÍTICOS (≥5 un)</div>
+      </div>
+      <div class="aud-kpi aud-kpi-atencao">
+        <div class="aud-kpi-val">${atencao}</div>
+        <div class="aud-kpi-label">ATENÇÃO (2-4)</div>
+      </div>
+      <div class="aud-kpi aud-kpi-leve">
+        <div class="aud-kpi-val">${leves}</div>
+        <div class="aud-kpi-label">LEVES (1)</div>
+      </div>
+      <div class="aud-kpi aud-kpi-ok">
+        <div class="aud-kpi-val">${ok}</div>
+        <div class="aud-kpi-label">OK (0)</div>
+      </div>
+      <div class="aud-kpi aud-kpi-semdados">
+        <div class="aud-kpi-val">${semdados}</div>
+        <div class="aud-kpi-label">SEM DADOS</div>
+      </div>
+    </div>
+
+    <div class="aud-equacao aud-eq-virada">
+      <div class="aud-eq-item">
+        <div class="aud-eq-label">FIN ${fmtData(a.dataInicio)}</div>
+        <div class="aud-eq-val">${fmtInt(totalFim)}</div>
+        <div class="aud-eq-sub">fechamento</div>
+      </div>
+      <div class="aud-eq-op aud-eq-vs">vs</div>
+      <div class="aud-eq-item">
+        <div class="aud-eq-label">INI ${fmtData(a.dataFim)}</div>
+        <div class="aud-eq-val">${fmtInt(totalIni)}</div>
+        <div class="aud-eq-sub">abertura</div>
+      </div>
+      <div class="aud-eq-op">=</div>
+      <div class="aud-eq-item ${totalDif < 0 ? 'aud-eq-neg' : totalDif > 0 ? 'aud-eq-pos' : 'aud-eq-zero'}">
+        <div class="aud-eq-label">DIFERENÇA</div>
+        <div class="aud-eq-val">${fmtSgn(totalDif)}</div>
+        <div class="aud-eq-sub">${totalDif === 0 ? 'tudo certo ✓' : 'investigar'}</div>
       </div>
     </div>
   `;
