@@ -2415,3 +2415,248 @@ body {
   padding-top: 16px;
   border-top: 1px solid var(--cinza-borda);
 }
+
+/* ========================================================================
+   SUB-ABAS (Auditoria Atual vs Histórico)
+   ======================================================================== */
+
+.subabas-wrapper {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  border-bottom: 2px solid var(--cinza-borda);
+  padding: 0 4px;
+}
+.subaba {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--cinza-texto);
+  transition: all 0.15s;
+  border-radius: 6px 6px 0 0;
+}
+.subaba:hover:not(.ativo) {
+  background: var(--cinza-bg);
+  color: var(--preto);
+}
+.subaba.ativo {
+  color: var(--vinho);
+  border-bottom-color: var(--vinho);
+  font-weight: 700;
+}
+.subaba-ico { font-size: 16px; }
+
+/* Banner de auditoria fechada */
+.aud-fechada-info {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  background: linear-gradient(135deg, #f0e8f0, #e6d4ec);
+  border-left: 4px solid var(--vinho);
+  border-radius: 10px;
+  margin: 10px 0 14px 0;
+}
+.aud-fechada-ico {
+  font-size: 22px;
+  flex-shrink: 0;
+}
+.aud-fechada-txt strong {
+  display: block;
+  font-family: 'Raleway', sans-serif;
+  font-size: 13px;
+  color: var(--vinho);
+}
+.aud-fechada-txt small {
+  display: block;
+  font-size: 11px;
+  color: var(--cinza-texto);
+  margin-top: 2px;
+}
+.aud-fechada-obs {
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: white;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--preto);
+  font-style: italic;
+}
+
+/* Modal de fechamento */
+.aud-fechar-resumo {
+  padding: 12px 14px;
+  background: var(--cinza-bg);
+  border-radius: 10px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.aud-fechar-resumo .badge-critico,
+.aud-fechar-resumo .badge-atencao,
+.aud-fechar-resumo .badge-leve {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  margin-right: 4px;
+}
+.aud-fechar-resumo .badge-critico { background: var(--vermelho-bg); color: var(--vermelho); }
+.aud-fechar-resumo .badge-atencao { background: var(--amarelo-bg); color: var(--amarelo-status); }
+.aud-fechar-resumo .badge-leve { background: #fff5e0; color: #b07420; }
+
+.aud-fechar-campo {
+  margin-bottom: 14px;
+}
+.aud-fechar-campo label {
+  display: block;
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--cinza-texto);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.aud-fechar-campo input,
+.aud-fechar-campo textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1.5px solid var(--cinza-borda);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 13px;
+  background: white;
+  resize: vertical;
+}
+.aud-fechar-campo input:focus,
+.aud-fechar-campo textarea:focus {
+  outline: none;
+  border-color: var(--vinho);
+}
+
+/* ========================================================================
+   HISTÓRICO DE AUDITORIAS
+   ======================================================================== */
+
+.hist-aviso {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  background: var(--cinza-bg);
+  border-left: 3px solid var(--vinho);
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-size: 12px;
+}
+.hist-aviso span:first-child { font-size: 20px; }
+.hist-aviso strong {
+  display: block;
+  font-family: 'Raleway', sans-serif;
+  font-weight: 700;
+  color: var(--preto);
+  font-size: 13px;
+}
+.hist-aviso small {
+  display: block;
+  color: var(--cinza-texto);
+  margin-top: 2px;
+}
+
+.hist-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hist-item {
+  display: grid;
+  grid-template-columns: 110px 1fr auto;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 14px;
+  background: white;
+  border: 1px solid var(--cinza-borda);
+  border-radius: 10px;
+  transition: border-color 0.12s;
+}
+.hist-item:hover { border-color: var(--vinho); }
+
+.hist-data-principal {
+  font-family: 'Raleway', sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--vinho);
+}
+.hist-data-modo {
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  color: var(--cinza-texto);
+  margin-top: 2px;
+}
+
+.hist-info { min-width: 0; }
+.hist-periodo {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  color: var(--cinza-texto);
+  margin-bottom: 6px;
+}
+.hist-status {
+  display: flex;
+  gap: 4px;
+}
+.hist-s {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 11px;
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+}
+.hist-s-c { background: var(--vermelho-bg);  color: var(--vermelho); }
+.hist-s-a { background: var(--amarelo-bg);   color: var(--amarelo-status); }
+.hist-s-l { background: #fff5e0;              color: #b07420; }
+.hist-s-o { background: var(--verde-bg);     color: var(--verde-status); }
+
+.hist-obs {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--preto);
+  font-style: italic;
+  padding: 4px 8px;
+  background: #faf3f6;
+  border-radius: 6px;
+  max-width: 500px;
+}
+
+.hist-meta small {
+  font-size: 10px;
+  color: var(--cinza-texto);
+  font-family: 'DM Mono', monospace;
+}
+
+@media (max-width: 700px) {
+  .hist-item {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+}
