@@ -8,6 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@400;600;800;900&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/primus.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
 <style>
   body { overflow-x: hidden; }
@@ -566,12 +567,7 @@
 
     <!-- COMPRAS -->
     <section class="view" id="view-compras">
-      <div class="placeholder-view">
-        <div class="placeholder-icon">🛒</div>
-        <h3>Lista de Compras Inteligente</h3>
-        <p>Sistema que cruza estoque atual (última contagem), consumo médio (histórico de vendas) e dias de cobertura para sugerir o que comprar. Você ajusta as quantidades e finaliza a lista, pronta para enviar pros fornecedores.</p>
-        <span class="placeholder-badge">⏳ Parte 3</span>
-      </div>
+      <div id="compras-container"></div>
     </section>
 
     <!-- VENDAS -->
