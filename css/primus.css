@@ -1881,3 +1881,278 @@ body {
     text-align: center;
   }
 }
+
+/* ========================================================================
+   AUDITORIA DE ESTOQUE
+   ======================================================================== */
+
+.aud-periodo {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  padding: 14px;
+  background: var(--cinza-bg);
+  border-radius: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.aud-periodo-campo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 150px;
+}
+.aud-periodo-campo label {
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--cinza-texto);
+  font-weight: 600;
+}
+.aud-periodo-campo input {
+  padding: 10px 12px;
+  border: 1.5px solid var(--cinza-borda);
+  border-radius: 8px;
+  font-family: 'DM Mono', monospace;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--vinho);
+  background: white;
+}
+.aud-periodo-campo input:focus {
+  outline: none;
+  border-color: var(--amarelo);
+}
+.aud-periodo-sep {
+  font-family: 'DM Mono', monospace;
+  font-size: 24px;
+  color: var(--vinho);
+  font-weight: bold;
+  padding: 0 8px;
+  padding-bottom: 8px;
+}
+
+.aud-info {
+  background: #fff9e0;
+  border-left: 3px solid var(--amarelo);
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--preto);
+  line-height: 1.5;
+}
+
+/* KPIs de resumo */
+.aud-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.aud-kpi {
+  background: white;
+  border: 1px solid var(--cinza-borda);
+  border-radius: 10px;
+  padding: 12px 10px;
+  text-align: center;
+  border-left: 3px solid var(--cinza-borda);
+}
+.aud-kpi-critico  { border-left-color: var(--vermelho); }
+.aud-kpi-atencao  { border-left-color: var(--amarelo-status); }
+.aud-kpi-leve     { border-left-color: #b07420; }
+.aud-kpi-ok       { border-left-color: var(--verde-status); }
+.aud-kpi-semdados { border-left-color: var(--cinza-texto); }
+.aud-kpi-val {
+  font-family: 'Raleway', sans-serif;
+  font-weight: 800;
+  font-size: 24px;
+  line-height: 1;
+  margin-bottom: 4px;
+  color: var(--preto);
+}
+.aud-kpi-critico .aud-kpi-val  { color: var(--vermelho); }
+.aud-kpi-atencao .aud-kpi-val  { color: var(--amarelo-status); }
+.aud-kpi-leve .aud-kpi-val     { color: #b07420; }
+.aud-kpi-ok .aud-kpi-val       { color: var(--verde-status); }
+.aud-kpi-label {
+  font-family: 'DM Mono', monospace;
+  font-size: 8px;
+  letter-spacing: 0.8px;
+  color: var(--cinza-texto);
+  text-transform: uppercase;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+/* Equação da auditoria */
+.aud-equacao {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  padding: 12px;
+  background: var(--cinza-bg);
+  border-radius: 10px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.aud-eq-item {
+  flex: 1;
+  min-width: 80px;
+  background: white;
+  border-radius: 8px;
+  padding: 8px 10px;
+  text-align: center;
+  border-top: 3px solid var(--cinza-borda);
+}
+.aud-eq-recebido { border-top-color: var(--verde-status); }
+.aud-eq-vendido  { border-top-color: #b07420; }
+.aud-eq-esperado { border-top-color: var(--vinho); background: #f5ebed; }
+.aud-eq-real     { border-top-color: var(--preto); }
+.aud-eq-neg      { border-top-color: var(--vermelho); background: var(--vermelho-bg); }
+.aud-eq-pos      { border-top-color: var(--amarelo-status); background: var(--amarelo-bg); }
+.aud-eq-zero     { border-top-color: var(--verde-status); background: var(--verde-bg); }
+.aud-eq-label {
+  font-family: 'DM Mono', monospace;
+  font-size: 8px;
+  color: var(--cinza-texto);
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.aud-eq-val {
+  font-family: 'Raleway', sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--preto);
+  line-height: 1.2;
+  margin-top: 2px;
+}
+.aud-eq-neg .aud-eq-val { color: var(--vermelho); }
+.aud-eq-pos .aud-eq-val { color: var(--amarelo-status); }
+.aud-eq-zero .aud-eq-val { color: var(--verde-status); }
+.aud-eq-sub {
+  font-family: 'DM Mono', monospace;
+  font-size: 8px;
+  color: var(--cinza-texto);
+  margin-top: 2px;
+  font-style: italic;
+}
+.aud-eq-op {
+  display: flex;
+  align-items: center;
+  font-family: 'Raleway', sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--cinza-texto);
+  padding: 0 4px;
+}
+.aud-eq-vs {
+  font-size: 14px;
+  color: var(--vinho);
+  font-weight: 800;
+}
+
+/* Tabela detalhada */
+.aud-sec-title {
+  font-family: 'Raleway', sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--preto);
+  margin: 8px 0 12px 0;
+}
+.aud-lista {
+  border: 1px solid var(--cinza-borda);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.aud-linha {
+  display: grid;
+  grid-template-columns: 2.2fr 0.7fr 0.8fr 0.8fr 0.8fr 0.8fr 1.1fr 1fr;
+  gap: 8px;
+  padding: 9px 14px;
+  align-items: center;
+  border-bottom: 1px solid var(--cinza-borda);
+  font-size: 12px;
+}
+.aud-linha:last-child { border-bottom: none; }
+.aud-linha.aud-cab {
+  background: var(--cinza-bg);
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--cinza-texto);
+  font-weight: 600;
+  padding: 9px 14px;
+}
+.aud-linha.aud-linha-critico {
+  background: rgba(181, 69, 27, 0.06);
+  border-left: 3px solid var(--vermelho);
+}
+.aud-linha.aud-linha-atencao {
+  border-left: 3px solid var(--amarelo-status);
+}
+.aud-linha.aud-linha-leve {
+  border-left: 3px solid #b07420;
+}
+.aud-linha.aud-linha-semdados { opacity: 0.5; }
+.aud-linha:hover:not(.aud-cab) { background: #fafafa; }
+.aud-linha.aud-linha-critico:hover { background: rgba(181, 69, 27, 0.09); }
+
+.aud-grupo-header {
+  background: var(--preto);
+  color: var(--amarelo);
+  padding: 6px 14px;
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.aud-nome { font-weight: 500; color: var(--preto); }
+.aud-num {
+  font-family: 'DM Mono', monospace;
+  font-weight: 600;
+  text-align: center;
+}
+.aud-num-pos { color: var(--verde-status); }
+.aud-num-neg { color: #b07420; }
+.aud-num-esp { color: var(--vinho); font-weight: 700; }
+.aud-num-real { color: var(--preto); font-weight: 700; }
+.aud-dif-neg { color: var(--vermelho); font-weight: 800; }
+.aud-dif-pos { color: var(--amarelo-status); font-weight: 800; }
+.aud-dif-zero { color: var(--verde-status); font-weight: 700; }
+
+.aud-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.aud-badge.bad-leve { background: #fff5e0; color: #b07420; }
+
+/* Responsivo */
+@media (max-width: 1000px) {
+  .aud-equacao { flex-direction: column; }
+  .aud-eq-item { min-width: 0; }
+  .aud-eq-op { justify-content: center; padding: 4px; }
+  .aud-linha {
+    grid-template-columns: 1.8fr repeat(3, 1fr);
+    font-size: 11px;
+  }
+  .aud-linha > div:nth-child(n+5) { display: none; }
+  .aud-linha.aud-cab > div:nth-child(n+5) { display: none; }
+}
+@media (max-width: 600px) {
+  .aud-periodo { flex-direction: column; align-items: stretch; }
+  .aud-periodo-sep { display: none; }
+}
