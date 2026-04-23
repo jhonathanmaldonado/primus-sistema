@@ -1428,3 +1428,349 @@ body {
     margin-top: 6px;
   }
 }
+
+/* ========================================================================
+   LISTA DE COMPRAS INTELIGENTE
+   ======================================================================== */
+
+.compras-config {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--amarelo-bg);
+  border-left: 3px solid var(--amarelo);
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+.compras-config-info {
+  font-size: 12px;
+  color: var(--preto);
+}
+.compras-acoes-topo {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* KPIs do topo */
+.compras-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.compras-kpi {
+  background: white;
+  border: 1px solid var(--cinza-borda);
+  border-radius: 10px;
+  padding: 14px;
+  text-align: center;
+  border-left: 3px solid var(--cinza-borda);
+}
+.compras-kpi.kpi-critico { border-left-color: var(--vermelho); }
+.compras-kpi.kpi-atencao { border-left-color: var(--amarelo-status); }
+.compras-kpi.kpi-destaque { border-left-color: var(--vinho); background: var(--cinza-bg); }
+.compras-kpi-val {
+  font-family: 'Raleway', sans-serif;
+  font-weight: 800;
+  font-size: 26px;
+  color: var(--preto);
+  line-height: 1;
+  margin-bottom: 4px;
+}
+.kpi-critico .compras-kpi-val { color: var(--vermelho); }
+.kpi-atencao .compras-kpi-val { color: var(--amarelo-status); }
+.kpi-destaque .compras-kpi-val { color: var(--vinho); }
+.compras-kpi-label {
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: var(--cinza-texto);
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+/* Grupos por fornecedor */
+.compras-grupo {
+  margin-bottom: 20px;
+  border: 1px solid var(--cinza-borda);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.compras-grupo-head {
+  background: var(--preto);
+  color: white;
+  padding: 10px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.compras-grupo-head h4 {
+  font-family: 'Raleway', sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  margin: 0;
+  color: white;
+}
+.compras-grupo-meta {
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: rgba(255,255,255,0.7);
+  text-transform: uppercase;
+}
+.forn-tel {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  color: var(--amarelo);
+  margin-left: 8px;
+  font-weight: normal;
+}
+
+/* Tabela de produtos */
+.compras-tabela {
+  background: white;
+}
+.compras-linha {
+  display: grid;
+  grid-template-columns: 2.2fr 0.8fr 0.9fr 1.3fr 0.8fr 1.2fr;
+  gap: 10px;
+  padding: 10px 14px;
+  align-items: center;
+  border-bottom: 1px solid var(--cinza-borda);
+  font-size: 13px;
+}
+.compras-linha:last-child { border-bottom: none; }
+.compras-linha:hover:not(.compras-cab) { background: var(--cinza-bg); }
+.compras-linha.compras-cab {
+  background: var(--cinza-bg);
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--cinza-texto);
+  font-weight: 600;
+  padding: 8px 14px;
+}
+.compras-linha.critico {
+  background: rgba(181, 69, 27, 0.05);
+  border-left: 3px solid var(--vermelho);
+}
+.compras-linha.atencao {
+  border-left: 3px solid var(--amarelo-status);
+}
+
+.compra-nome {
+  font-weight: 500;
+}
+.compra-nome > div:first-child {
+  font-size: 13px;
+  color: var(--preto);
+}
+.compra-grupo-label {
+  font-size: 10px;
+  color: var(--cinza-texto);
+  margin-top: 2px;
+}
+.compra-num {
+  font-family: 'DM Mono', monospace;
+  font-weight: 600;
+  text-align: center;
+  font-size: 12px;
+}
+.compra-cobertura {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-start;
+}
+
+.compra-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.bad-critico { background: var(--vermelho-bg); color: var(--vermelho); }
+.bad-atencao { background: var(--amarelo-bg); color: var(--amarelo-status); }
+.bad-medio { background: #fff5e0; color: #b07420; }
+.bad-ok { background: var(--verde-bg); color: var(--verde-status); }
+.bad-semdados { background: var(--cinza-bg); color: var(--cinza-texto); }
+
+.compra-qtd-input {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1.5px solid var(--cinza-borda);
+  border-radius: 7px;
+  font-family: 'DM Mono', monospace;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--vinho);
+  text-align: center;
+  background: white;
+}
+.compra-qtd-input:focus {
+  outline: none;
+  border-color: var(--amarelo);
+  box-shadow: 0 0 0 3px rgba(250,185,0,0.15);
+}
+
+/* Rodapé com ações */
+.compras-rodape {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 0 4px;
+  margin-top: 10px;
+  border-top: 1.5px solid var(--cinza-borda);
+  flex-wrap: wrap;
+}
+
+/* Modal de fornecedores */
+.fornecedores-lista {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.fornecedor-card {
+  background: var(--cinza-bg);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 12px;
+  border-left: 3px solid var(--vinho);
+}
+.fornecedor-head {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  align-items: center;
+}
+.fornecedor-nome-input {
+  flex: 2;
+  padding: 8px 10px;
+  border: 1.5px solid var(--cinza-borda);
+  border-radius: 7px;
+  font-weight: 600;
+  font-size: 13px;
+  background: white;
+}
+.fornecedor-tel-input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1.5px solid var(--cinza-borda);
+  border-radius: 7px;
+  font-size: 12px;
+  background: white;
+}
+.fornecedor-nome-input:focus,
+.fornecedor-tel-input:focus {
+  outline: none;
+  border-color: var(--amarelo);
+}
+
+.fornecedor-produtos-label {
+  display: block;
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  color: var(--cinza-texto);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.fornecedor-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chip-produto {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  background: white;
+  border: 1.5px solid var(--cinza-borda);
+  border-radius: 14px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.12s;
+  user-select: none;
+}
+.chip-produto input {
+  display: none;
+}
+.chip-produto:hover {
+  border-color: var(--vinho);
+}
+.chip-produto.ativo {
+  background: var(--vinho);
+  color: white;
+  border-color: var(--vinho);
+}
+.chip-produto.ativo span::before { content: '✓ '; }
+
+/* Responsivo */
+@media (max-width: 900px) {
+  .compras-linha {
+    grid-template-columns: 2fr 1fr 1fr;
+    gap: 8px;
+  }
+  .compras-linha > div:nth-child(n+4) {
+    grid-column: span 1;
+  }
+  .compras-cab > div:nth-child(n+4) { font-size: 9px; }
+  .compras-config { flex-direction: column; align-items: stretch; }
+  .compras-acoes-topo { justify-content: space-between; }
+}
+
+@media (max-width: 600px) {
+  .fornecedor-head { flex-direction: column; align-items: stretch; }
+  .compras-linha {
+    grid-template-columns: 1fr 1fr;
+    font-size: 12px;
+  }
+  .compra-nome { grid-column: 1 / -1; margin-bottom: 6px; }
+}
+
+/* ========================================================================
+   CONVERSÃO CAIXA/FARDO NA LISTA DE COMPRAS
+   ======================================================================== */
+
+.compra-sugerido {
+  text-align: center;
+}
+.compra-sugerido .compra-num {
+  text-align: center;
+}
+.compra-final {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.compra-conv {
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  color: var(--cinza-texto);
+  text-align: center;
+  font-style: italic;
+  letter-spacing: 0.3px;
+  line-height: 1.2;
+}
+.compra-conv-final {
+  min-height: 12px;  /* reserva espaço mesmo vazio, evita pulo visual */
+}
+.compra-cobertura { align-items: flex-start; }
+
+@media (max-width: 600px) {
+  .compra-conv { font-size: 8px; }
+}
